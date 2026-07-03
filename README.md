@@ -18,11 +18,28 @@ tagged in the ground truth so detection can be scored.
 
 ## Install / run
 
-No install needed:
+**As a command (recommended)** — installs a `7s-generator` command straight from
+GitHub. [pipx](https://pipx.pypa.io) keeps it in its own isolated environment:
+```bash
+pipx install git+https://github.com/larsnor/7S-generator.git
+7s-generator --help
+```
+Plain `pip` works too (use a virtual environment):
+```bash
+pip install git+https://github.com/larsnor/7S-generator.git
+```
+Add the **plate-photo rendering** extra (`generate --images`, pulls in Pillow):
+```bash
+pipx install "7s-generator[images] @ git+https://github.com/larsnor/7S-generator.git"
+```
+**Pin a version** by appending a tag to any of the above, e.g.
+`…/7S-generator.git@v0.1.0`.
+
+**Without installing** — run from a clone (standard library only, no build step):
 ```bash
 python3 -m corpusgen <command> …
 ```
-Or `pip install -e .` to get a `7s-generator` command.
+**For development** — editable install from a clone: `pip install -e ".[images]"`.
 
 ## Commands
 
@@ -46,8 +63,9 @@ python3 -m corpusgen generate \
   `--reports`).
 - `--images` (optional) attaches a **corroborating plate photo** to each report
   whose text names a plate — the plate is rendered legibly *and* embedded in the
-  JPEG comment (`7SPLATE:`) so an offline consumer can read it. Needs **Pillow**
-  (`pip install Pillow`); everything else is stdlib-only.
+  JPEG comment (`7SPLATE:`) so an offline consumer can read it. Needs the
+  **`images` extra** (installs Pillow — see [Install / run](#install--run));
+  everything else is stdlib-only.
 
 ### 2. `add-hostiles` — a threat cell
 ```bash

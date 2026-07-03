@@ -9,7 +9,23 @@ description = "Synthetic 7S report corpus generator (CLI) — normal activity, h
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
+keywords = ["7S", "corpus", "synthetic-data", "situational-awareness", "CLI"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
 dependencies = []  # standard library only
+
+[project.optional-dependencies]
+images = ["Pillow>=9"]  # only for `generate --images` (plate-photo rendering)
+
+[project.urls]
+Homepage = "https://github.com/larsnor/7S-generator"
+Repository = "https://github.com/larsnor/7S-generator"
+Issues = "https://github.com/larsnor/7S-generator/issues"
 
 [project.scripts]
 7s-generator = "corpusgen.cli:main"
