@@ -90,3 +90,20 @@ All the "what a report says" content — area profiles, seasonal clothing, and t
 hostile/protester repertoires — is declarative data in
 [`corpusgen/content.py`](corpusgen/content.py). Add an area type or a hostility
 mode by editing that one file; the generation logic stays untouched.
+
+## Relationship to ODEN & sync contract
+
+7S-generator is standalone, but it shares a small **format contract** with the
+[ODEN](https://github.com/larsnor/ODEN-analys) plugin that consumes its output:
+
+- the new-format `7S-rapport` markdown produced by
+  [`corpusgen/render.py`](corpusgen/render.py), and
+- the `7SPLATE:` JPEG-comment marker written by
+  [`corpusgen/images.py`](corpusgen/images.py) (read by ODEN's vision stub).
+
+Two modules — [`corpusgen/mgrs.py`](corpusgen/mgrs.py) and
+[`corpusgen/render.py`](corpusgen/render.py) — are **deliberately duplicated**
+(copied, not shared, so the repos stay independent). There is **no build-time
+coupling**, only this contract: **if you change the report format, the `7SPLATE:`
+marker, or MGRS handling in one repo, mirror it in the other** so a fed corpus
+keeps parsing in ODEN.
