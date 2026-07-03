@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Generated corpora (regenerable) and scratch — NOT the corpusgen/ package
+out/
+corpus_*/
+reports_*/
+
+# OS / editor
+.DS_Store
