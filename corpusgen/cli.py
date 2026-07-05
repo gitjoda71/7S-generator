@@ -45,7 +45,7 @@ def cmd_generate(a):
     c = generate.build_normal(
         out=a.out, lat=a.aoi[0], lon=a.aoi[1], radius=a.radius, area=a.area,
         start=getattr(a, "from"), days=days, callsigns=a.callsigns, seed=a.seed,
-        reports=a.reports, obj_name=a.name, images=a.images,
+        reports=a.reports, obj_name=a.name, images=a.images, obsidian=a.obsidian,
     )
     print(f"[{a.area}] wrote {len(c.ground_truth)} reports to {c.path} "
           f"({days} days, season {c.meta['season']}, {len(c.meta['locations'])} locations)")
@@ -119,6 +119,11 @@ def build_parser():
                    help="override the auto report count (default: frequency x days x season)")
     g.add_argument("--images", action="store_true",
                    help="attach corroborating plate photos to plate reports (needs Pillow)")
+    g.add_argument("--obsidian", action="store_true",
+                   help="Obsidian-compatible output: image embeds as `## Bilagor` + "
+                        "`![[wikilink]]` in per-message folders, exactly matching the source "
+                        "app (default: portable standard-Markdown `![](attachments/…)`). "
+                        "Only affects reports that carry a photo (--images).")
     g.add_argument("--seed", type=int, default=2026, metavar="N",
                    help="RNG seed (same seed => same corpus)")
     g.add_argument("--out", required=True, metavar="DIR", help="output corpus directory")

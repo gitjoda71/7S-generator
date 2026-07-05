@@ -14,7 +14,9 @@ from datetime import datetime
 from pathlib import Path
 
 _FM_TIME = re.compile(r"^tidpunkt:\s*(.+)$", re.MULTILINE)
-_EMBED = re.compile(r"!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]")  # Obsidian wikilink image embed
+# image embeds: Obsidian wikilink `![[path]]` or standard Markdown `![alt](path)`
+_EMBED_WIKI = re.compile(r"!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]")
+_EMBED_MD = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 
 
 def _load(src):
@@ -48,7 +50,7 @@ class Feeder:
     def _copy(self, p):
         shutil.copy2(p, self.dest / p.name)
         text = p.read_text(encoding="utf-8")
-        for rel in _EMBED.findall(text):
+        for rel in _EMBED_WIKI.findall(text) + _EMBED_MD.findall(text):
             img = self.src / rel
             if img.exists():
                 out = self.dest / rel

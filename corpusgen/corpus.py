@@ -21,9 +21,10 @@ class Corpus:
         self._seen_tnr = {}
 
     def clear_attachments(self):
-        """Remove the per-message attachment folders kept beside the .md reports."""
+        """Remove attachment folders kept beside the .md reports (both the plain
+        `attachments/` and the per-message `<time>_<tnr>-…/` obsidian layout)."""
         for d in self.path.glob("*"):
-            if d.is_dir() and _ATT_DIR.match(d.name):
+            if d.is_dir() and (d.name == "attachments" or _ATT_DIR.match(d.name)):
                 shutil.rmtree(d)
 
     # --- create / load -------------------------------------------------------
@@ -60,7 +61,8 @@ class Corpus:
             rec = dict(rec)
             rec["tnr"] = f"{rec['tnr']}_{count}"
         fname = f"TNR{rec['tnr']}.md"
-        (self.path / fname).write_text(render(rec), encoding="utf-8")
+        (self.path / fname).write_text(
+            render(rec, obsidian=bool(self.meta.get("obsidian"))), encoding="utf-8")
         self.ground_truth.append({
             "file": fname, "id": f"7S-{rec['uuid']}", "tnr": rec["tnr"],
             "tidpunkt": rec["tidpunkt"], "truth": truth, "subtype": subtype,

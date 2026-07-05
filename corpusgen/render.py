@@ -1,7 +1,11 @@
 """Render a report record into 7S-rapport markdown: Händelse free-prose, a spaced
 MGRS grid in Ställe, signal_* frontmatter, an optional Symbol, and (when a photo is
-attached) a `## Bilagor` section with an Obsidian wikilink embed — matching the
-format of reports captured by the source app."""
+attached) a `## Bilagor` section.
+
+`obsidian=True` writes the attachment as an Obsidian wikilink (`![[…]]`), matching
+the source app's vault format exactly; the default writes a portable standard-Markdown
+image embed (`![…](…)`) that renders in any Markdown viewer. Everything else is
+identical between the two modes."""
 
 
 def tnr_from(dt):
@@ -12,7 +16,7 @@ def iso(dt):
     return dt.strftime("%Y-%m-%dT%H:%M:%S")
 
 
-def render(rec):
+def render(rec, obsidian=False):
     tnr = rec["tnr"]
     lines = ["---", f"id: 7S-{rec['uuid']}", "typ: 7S-rapport", f'tnr: "{tnr}"',
              f'tidpunkt: "{rec["tidpunkt"]}"']
@@ -33,5 +37,10 @@ def render(rec):
         lines += [f"**Symbol:** {rec['symbol']}", ""]
     lines += [f"**Sagesman:** {rec['callsign']}", "", "**Sedan:** -", ""]
     if rec.get("image"):
-        lines += ["## Bilagor", "", f"![[{rec['image']}]]", ""]
+        if obsidian:
+            embed = f"![[{rec['image']}]]"
+        else:
+            name = rec["image"].rsplit("/", 1)[-1]
+            embed = f"![{name}]({rec['image']})"
+        lines += ["## Bilagor", "", embed, ""]
     return "\n".join(lines) + "\n"

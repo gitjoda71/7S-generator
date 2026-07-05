@@ -25,8 +25,9 @@ WELCOME = r"""
 
 HELP = """\
 Commands (each takes the same flags as `7s-generator <cmd> -h`):
-  generate --aoi LAT,LON --from YYYY-MM-DD --out DIR [--area .. --days .. --images ..]
+  generate --aoi LAT,LON --from YYYY-MM-DD --out DIR [--area .. --days .. --images .. --obsidian]
                       build a normal-activity corpus; becomes the active corpus
+                      (--obsidian => exact app format; default => portable Markdown)
   add-hostiles --type TYPE [--corpus DIR] [--count N]
                       inject a hostile cell (recon/sabotage/infiltration/terrorism)
   add-protesters --type TYPE [--corpus DIR] [--count N]
@@ -72,7 +73,7 @@ class Shell:
             c = generate.build_normal(
                 out=a.out, lat=a.aoi[0], lon=a.aoi[1], radius=a.radius, area=a.area,
                 start=frm, days=days, callsigns=a.callsigns, seed=a.seed,
-                reports=a.reports, obj_name=a.name, images=a.images)
+                reports=a.reports, obj_name=a.name, images=a.images, obsidian=a.obsidian)
         except Exception as e:                       # noqa: BLE001 - surface, don't crash
             print(f"  ? generate failed: {e}")
             return

@@ -85,7 +85,7 @@ def _new_record(dt, loc, rng, platoon_uuid):
 
 # --- normal activity --------------------------------------------------------
 def build_normal(out, lat, lon, radius, area, start, days, callsigns, seed,
-                 reports=None, obj_name="objektet", images=False):
+                 reports=None, obj_name="objektet", images=False, obsidian=False):
     rng = _random.Random(seed)
     prof = AREAS[area]
     season = season_of(start.month)
@@ -99,7 +99,8 @@ def build_normal(out, lat, lon, radius, area, start, days, callsigns, seed,
     corpus = Corpus.create(out, {
         "aoi": [lat, lon], "aoi_name": obj_name, "radius_km": radius, "area": area,
         "from": start.strftime("%Y-%m-%d"), "days": days, "callsigns": callsigns,
-        "season": season, "seed": seed, "locations": locs, "platoon_uuid": platoon_uuid,
+        "season": season, "seed": seed, "obsidian": obsidian,
+        "locations": locs, "platoon_uuid": platoon_uuid,
     })
     render_plate = None
     if images:
@@ -118,7 +119,8 @@ def build_normal(out, lat, lon, radius, area, start, days, callsigns, seed,
         if rng.random() < 0.12:  # occasional benign appearance (season-appropriate)
             rec["symbol"] = f"{rng.choice(smeta['upper'])}, {rng.choice(smeta['accessory'])}"
         if images and rec["plate"]:  # a corroborating photo of the typed plate
-            folder = _attachment_dir(rec)
+            # obsidian: per-message folder (exact app layout); else: a plain attachments/
+            folder = _attachment_dir(rec) if obsidian else "attachments"
             img_name = f"plate_{rec['uuid'][:8]}.jpg"
             d = corpus.path / folder
             d.mkdir(parents=True, exist_ok=True)
