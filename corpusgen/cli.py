@@ -82,7 +82,8 @@ def cmd_add_protesters(a):
 def build_parser():
     p = argparse.ArgumentParser(
         prog="7s-generator", description=__doc__, formatter_class=_Fmt,
-        epilog="Typical flow:\n"
+        epilog="Run with no command (just `7s-generator`) to open an interactive shell.\n\n"
+               "Typical flow:\n"
                "  1. generate       build a normal-activity corpus\n"
                "  2. add-hostiles   layer a threat cell on top       (optional)\n"
                "  3. add-protesters layer benign noise on top        (optional)\n"
@@ -170,6 +171,12 @@ def build_parser():
 
 
 def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+    if not argv or argv[0] in ("shell", "repl"):
+        from . import shell
+        shell.run()
+        return
     args = build_parser().parse_args(argv)
     args.func(args)
 

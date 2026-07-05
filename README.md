@@ -1,49 +1,80 @@
 # 7S-generator
 
-A small, dependency-free, **standalone CLI** that generates synthetic **7S
-field-report corpora** for testing situational-awareness tools. The output is
-plain Markdown + a ground-truth file, usable anywhere.
+Ett litet, beroendefritt, **fristående CLI** som genererar syntetiska
+**7S-fältrapportkorpusar** för att testa lägesbildsverktyg. Utdata är vanlig
+Markdown + en facit-fil (ground truth), användbar var som helst.
 
-You describe an **area of interest** and a **time window**, and it produces a
-realistic stream of *normal* civilian reports. Two further commands layer a
-**hostile cell** (recon / sabotage / infiltration / terrorism) or **challenging
-civilians** (demonstrators / environmentalists / peace activists) on top — each
-tagged in the ground truth so detection can be scored.
+Du beskriver ett **område av intresse** (AOI) och ett **tidsfönster**, och verktyget
+producerar ett realistiskt flöde av *normala* civila rapporter. Två ytterligare
+kommandon lägger på en **fientlig cell** (spaning / sabotage / infiltration /
+terrorism) eller **utmanande civila** (demonstranter / miljöaktivister /
+fredsaktivister) ovanpå — var och en märkt i facit så att detektion kan poängsättas.
 
-- **Standard library only** — no dependencies, no network.
-- **Deterministic** — same `--seed` → same corpus.
-- **Portable output** — `7S-rapport` markdown (free-prose Händelse, MGRS grids,
-  `signal_*` frontmatter, standard-Markdown image embeds) that renders in any
-  Markdown viewer.
+- **Endast standardbiblioteket** — inga beroenden, inget nätverk.
+- **Deterministiskt** — samma `--seed` → samma korpus.
+- **Portabel utdata** — `7S-rapport`-markdown (fritext-Händelse, MGRS-rutor,
+  `signal_*`-frontmatter, standard-Markdown-bildinbäddningar) som visas i vilken
+  Markdown-läsare som helst.
 
-## Install / run
+## Installation / körning
 
-**As a command (recommended)** — installs a `7s-generator` command straight from
-GitHub. [pipx](https://pipx.pypa.io) keeps it in its own isolated environment:
+**Som ett kommando (rekommenderas)** — installerar ett `7s-generator`-kommando direkt
+från GitHub. [pipx](https://pipx.pypa.io) håller det i en egen isolerad miljö:
 ```bash
 pipx install git+https://github.com/larsnor/7S-generator.git
 7s-generator --help
 ```
-Plain `pip` works too (use a virtual environment):
+Vanlig `pip` fungerar också (använd en virtuell miljö):
 ```bash
 pip install git+https://github.com/larsnor/7S-generator.git
 ```
-Add the **plate-photo rendering** extra (`generate --images`, pulls in Pillow):
+Lägg till tillägget för **skyltfoto-rendering** (`generate --images`, drar in Pillow):
 ```bash
 pipx install "7s-generator[images] @ git+https://github.com/larsnor/7S-generator.git"
 ```
-**Pin a version** by appending a tag to any of the above, e.g.
+**Lås en version** genom att lägga till en tagg efter någon av ovanstående, t.ex.
 `…/7S-generator.git@v0.1.0`.
 
-**Without installing** — run from a clone (standard library only, no build step):
+**Utan installation** — kör från en klon (endast standardbiblioteket, inget byggsteg):
 ```bash
-python3 -m corpusgen <command> …
+python3 -m corpusgen <kommando> …
 ```
-**For development** — editable install from a clone: `pip install -e ".[images]"`.
+**För utveckling** — redigerbar installation från en klon: `pip install -e ".[images]"`.
 
-## Commands
+## Interaktivt skal (rekommenderas)
 
-### 1. `generate` — normal activity
+Kör `7s-generator` (eller `python3 -m corpusgen`) **utan argument** för att öppna ett
+interaktivt skal. Det visar en prompt och en kort hjälptext, och varje åtgärd är ett
+eget kommando med egna flaggor — inget behov av en enda lång rad. Skalet **kommer ihåg
+den aktiva korpusen**, så du slipper skriva `--corpus` om och om igen, och `feed --auto`
+körs **i bakgrunden** medan prompten är kvar (pausa/återuppta/stoppa när du vill).
+
+```text
+$ 7s-generator
+7S> generate --aoi 60.345,17.422 --area airport --from 2026-06-15 --days 14 --out ./korpus_tierp
+  [airport] wrote 370 reports to ./korpus_tierp (…)
+  active corpus: ./korpus_tierp   ground truth: {'civil': 370}
+7S> add-hostiles --type recon              # ingen --corpus behövs
+7S> add-protesters --type demonstranter
+7S> feed --dest ./inkorg --auto 10         # matar i bakgrunden; prompten är kvar
+7S> pause                                  # håll flödet
+7S> resume                                 # fortsätt
+7S> status                                 # visa aktiv korpus och pågående flöde
+7S> stop
+7S> quit
+```
+
+Kommandona (`generate`, `add-hostiles`, `add-protesters`, `feed`) tar samma flaggor som
+i engångsläget nedan; kör `<kommando> -h` i skalet för detaljer. Sessionskommandon:
+`use <mapp>` (sätt aktiv korpus), `status`, `pause` · `resume` · `stop` (styr ett
+bakgrundsflöde), `help`, `quit`.
+
+## Kommandon
+
+De fyra kommandona nedan fungerar både i skalet och som **engångskommandon** för
+skript/CI.
+
+### 1. `generate` — normal aktivitet
 ```bash
 python3 -m corpusgen generate \
   --aoi 60.345,17.422 --radius 3 --area airport \
@@ -51,73 +82,75 @@ python3 -m corpusgen generate \
   --callsigns AQ,BQ,CQ,DQ --name "Tierp flygfält" \
   --out ./corpus_tierp
 ```
-- `--aoi LAT,LON` — the object/area to protect (proximity centre).
-- `--radius KM` — named locations are scattered within this radius, each assigned
-  to a **callsign** by bearing (one sector per platoon).
+- `--aoi LAT,LON` — objektet/området som ska skyddas (närhetscentrum).
+- `--radius KM` — namngivna platser sprids ut inom denna radie, var och en tilldelad en
+  **anropssignal** efter bäring (en sektor per pluton).
 - `--area` — `urban · suburban · rural · airport · port · military · coastal ·
-  forest`. Sets the activity vocabulary **and the base report frequency** (urban
-  busy, rural/forest sparse).
-- `--from` + (`--to` | `--days`) — the calendar window. The **season** (from the
-  start month) shifts clothing, daylight hours and civilian volume.
-- Report count is derived from `frequency × days × season` (override with
+  forest`. Sätter aktivitetsvokabulären **och basfrekvensen för rapporter** (urbant
+  livligt, rural/forest glest).
+- `--from` + (`--to` | `--days`) — kalenderfönstret. **Årstiden** (från startmånaden)
+  påverkar klädsel, dagsljustimmar och civil volym.
+- Antalet rapporter härleds från `frekvens × dagar × årstid` (åsidosätt med
   `--reports`).
-- `--images` (optional) attaches a **corroborating plate photo** to each report
-  whose text names a plate — the plate is rendered legibly *and* embedded in the
-  JPEG comment (`7SPLATE:`) so an offline consumer can read it. Needs the
-  **`images` extra** (installs Pillow — see [Install / run](#install--run));
-  everything else is stdlib-only.
+- `--images` (valfritt) bifogar ett **bekräftande skyltfoto** till varje rapport vars
+  text nämner en registreringsskylt — skylten renderas läsbart *och* bäddas in i
+  JPEG-kommentaren (`7SPLATE:`) så att en offline-konsument kan läsa den. Kräver
+  **`images`-tillägget** (installerar Pillow — se [Installation /
+  körning](#installation--körning)); allt annat är endast standardbibliotek.
 
-### 2. `add-hostiles` — a threat cell
+### 2. `add-hostiles` — en hotcell
 ```bash
 python3 -m corpusgen add-hostiles --corpus ./corpus_tierp --type recon
 ```
-Injects **2–10** distinct hostiles (random unless `--count`) of one `--type`
-(`recon · sabotage · infiltration · terrorism`), near the AOI, time-biased,
-recurring 1–4× each. Detectable only as a spatio-temporal / behavioural pattern.
+Injicerar **2–10** distinkta fiender (slumpmässigt om inte `--count` anges) av en
+`--type` (`recon · sabotage · infiltration · terrorism`), nära AOI, tidsviktade,
+återkommande 1–4× var. Detekterbara endast som ett spatio-temporalt / beteendemässigt
+mönster.
 
-### 3. `add-protesters` — challenging civilians (noise)
+### 3. `add-protesters` — utmanande civila (brus)
 ```bash
 python3 -m corpusgen add-protesters --corpus ./corpus_tierp --type miljöaktivister
 ```
-Injects a **group** (`demonstranter · miljöaktivister · fredsaktivister`) that
-gathers at one location on one day — not hostile, but a spatio-temporal cluster
-that stresses a detector's precision.
+Injicerar en **grupp** (`demonstranter · miljöaktivister · fredsaktivister`) som samlas
+på en plats under en dag — inte fientlig, men ett spatio-temporalt kluster som prövar en
+detektors precision.
 
-### 4. `feed` — drip a corpus into a destination folder
+### 4. `feed` — droppa en korpus till en målmapp
 ```bash
-python3 -m corpusgen feed --corpus ./corpus_tierp --dest /path/to/inbox
+python3 -m corpusgen feed --corpus ./corpus_tierp --dest /sökväg/till/inkorg
 ```
-Delivers the reports from the corpus folder into any destination folder in
-chronological order — either **in compressed time** (`--auto MINS`) or **in
-batches** (`--send N`) — mimicking a central app trickling messages out over
-time. Interactive by default (`send [n]` · `auto [mins]` · `status` · `reset` ·
-`quit`); copies referenced attachments so image embeds resolve. One-shot flags
-for scripts/CI: `--send N` · `--auto MINS` · `--reset` · `--status`.
+Levererar rapporterna från korpusmappen till valfri målmapp i kronologisk ordning —
+antingen **i komprimerad tid** (`--auto MINS`) eller **i satser** (`--send N`) — och
+härmar en central app som droppar ut meddelanden över tid. Interaktivt som standard
+(`send [n]` · `auto [mins]` · `pause` · `resume` · `stop` · `status` · `reset` ·
+`quit`); kopierar refererade bilagor så att bildinbäddningar fungerar. Engångsflaggor
+för skript/CI: `--send N` · `--auto MINS` · `--reset` · `--status`. Med `--auto` (i
+skalet eller feed-läget) körs flödet i bakgrunden och kan pausas från prompten.
 
-## Output
+## Utdata
 
-A corpus directory contains:
-- `TNR<DDHHMM>.md` — the reports (new-format 7S).
-- `ground_truth.json` — one row per report: `truth` (`civil` / `hostile` /
-  `protester`), `subtype`, `member`, `plate`, `sector`, `callsign` — so you can
-  measure recall/precision.
-- `meta.json` — how it was built (AOI, radius, area, dates, callsigns, the placed
-  locations), so the augment commands inject consistently into the same area.
+En korpusmapp innehåller:
+- `TNR<DDHHMM>.md` — rapporterna (7S-format).
+- `ground_truth.json` — en rad per rapport: `truth` (`civil` / `hostile` /
+  `protester`), `subtype`, `member`, `plate`, `sector`, `callsign` — så att du kan mäta
+  täckning och precision (recall/precision).
+- `meta.json` — hur den byggdes (AOI, radie, område, datum, anropssignaler, de placerade
+  platserna), så att tilläggskommandona injicerar konsekvent i samma område.
 
-## Extending
+## Utöka
 
-All the "what a report says" content — area profiles, seasonal clothing, and the
-hostile/protester repertoires — is declarative data in
-[`corpusgen/content.py`](corpusgen/content.py). Add an area type or a hostility
-mode by editing that one file; the generation logic stays untouched.
+Allt innehåll om "vad en rapport säger" — områdesprofiler, säsongsklädsel och
+fiende-/demonstrantrepertoarerna — är deklarativ data i
+[`corpusgen/content.py`](corpusgen/content.py). Lägg till en områdestyp eller ett hotläge
+genom att redigera den enda filen; genereringslogiken lämnas orörd.
 
-## Report format
+## Rapportformat
 
-Each report is a `7S-rapport` Markdown file with YAML frontmatter (`id`, `tnr`,
-`tidpunkt`, `plats`, optional `signal_*` delivery fields and `lat`/`lon`) followed
-by the 7S body (`Stund`, `Ställe`, `Händelse`, optional `Symbol`, `Sagesman`).
-When `--images` is used, a plate photo is attached as a standard-Markdown embed
-(`![...](attachments/…)`) with the plate also written into the JPEG comment
-(marker `7SPLATE:`) so an offline consumer can read it without OCR. The report
-rendering lives in [`corpusgen/render.py`](corpusgen/render.py) and MGRS handling
-in [`corpusgen/mgrs.py`](corpusgen/mgrs.py).
+Varje rapport är en `7S-rapport`-Markdown-fil med YAML-frontmatter (`id`, `tnr`,
+`tidpunkt`, `plats`, valfria `signal_*`-leveransfält och `lat`/`lon`) följt av
+7S-kroppen (`Stund`, `Ställe`, `Händelse`, valfri `Symbol`, `Sagesman`). När `--images`
+används bifogas ett skyltfoto som en standard-Markdown-inbäddning
+(`![...](attachments/…)`) med skylten även skriven i JPEG-kommentaren (markören
+`7SPLATE:`) så att en offline-konsument kan läsa den utan OCR. Rapportrenderingen finns
+i [`corpusgen/render.py`](corpusgen/render.py) och MGRS-hantering i
+[`corpusgen/mgrs.py`](corpusgen/mgrs.py).
