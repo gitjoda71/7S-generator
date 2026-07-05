@@ -1,9 +1,9 @@
-"""7S-generator CLI — build a synthetic 7S report corpus and layer threats/noise.
+"""7S-generator — bygg en syntetisk 7S-rapportkorpus och lägg på hot/brus.
 
-  generate        normal-activity corpus for an area of interest
-  add-hostiles    inject a recon/sabotage/infiltration/terrorism cell
-  add-protesters  inject a demonstrators/environmentalists/peace group (noise)
-  feed            drip a corpus into a destination folder over time
+  generate        normalkorpus för ett område av intresse (AOI)
+  add-hostiles    injicera en cell (spaning/sabotage/infiltration/terrorism)
+  add-protesters  injicera en grupp (demonstranter/miljöaktivister/fredsaktivister)
+  feed            mata ut en korpus till en målmapp över tid
 """
 import argparse
 import re
@@ -28,17 +28,24 @@ class _AoiAction(argparse.Action):
         text = " ".join(values)
         parts = [p for p in re.split(r"[,\s]+", text.strip()) if p]
         if len(parts) != 2:
-            raise argparse.ArgumentError(self, f"expected LAT,LON (two numbers), got {text!r}")
+            raise argparse.ArgumentError(self, f"förväntade LAT,LON (två tal), fick {text!r}")
         try:
-            setattr(namespace, self.dest, (float(parts[0]), float(parts[1])))
+            lat, lon = float(parts[0]), float(parts[1])
         except ValueError:
-            raise argparse.ArgumentError(self, f"LAT and LON must be numbers, got {text!r}")
+            raise argparse.ArgumentError(self, f"LAT och LON måste vara tal, fick {text!r}")
+        # Range-check: a latitude > 90 (a common typo, e.g. 599.6 for 59.96)
+        # silently produced arctic MGRS grids (band X) before this guard.
+        if not -90 <= lat <= 90:
+            raise argparse.ArgumentError(self, f"LAT måste vara mellan -90 och 90, fick {lat} (glömt decimalpunkt?)")
+        if not -180 <= lon <= 180:
+            raise argparse.ArgumentError(self, f"LON måste vara mellan -180 och 180, fick {lon}")
+        setattr(namespace, self.dest, (lat, lon))
 
 
 def _callsigns(s):
     cs = [c.strip().upper() for c in s.split(",") if c.strip()]
     if not cs:
-        raise argparse.ArgumentTypeError("need at least one callsign")
+        raise argparse.ArgumentTypeError("minst en anropssignal krävs")
     return cs
 
 
@@ -52,18 +59,18 @@ def cmd_generate(a):
     else:
         days = a.days
     if days <= 0:
-        sys.exit("error: empty date range")
+        sys.exit("fel: tomt datumintervall")
     c = generate.build_normal(
         out=a.out, lat=a.aoi[0], lon=a.aoi[1], radius=a.radius, area=a.area,
         start=getattr(a, "from"), days=days, callsigns=a.callsigns, seed=a.seed,
         reports=a.reports, obj_name=a.name, images=a.images, obsidian=a.obsidian,
     )
-    print(f"[{a.area}] wrote {len(c.ground_truth)} reports to {c.path} "
-          f"({days} days, season {c.meta['season']}, {len(c.meta['locations'])} locations)")
+    print(f"[{a.area}] skrev {len(c.ground_truth)} rapporter till {c.path} "
+          f"({days} dagar, årstid {c.meta['season']}, {len(c.meta['locations'])} platser)")
     if a.images:
         n = sum(1 for r in c.ground_truth if r.get("plate"))
-        print(f"rendered corroborating plate photos for {n} plate report(s)")
-    print(f"ground truth: {c.counts()}")
+        print(f"renderade skyltfoton för {n} skyltrapport(er)")
+    print(f"facit: {c.counts()}")
 
 
 def cmd_feed(a):
@@ -79,110 +86,115 @@ def cmd_feed(a):
 def cmd_add_hostiles(a):
     c = Corpus.load(a.corpus)
     n = generate.add_hostiles(c, a.type, a.count, a.seed)
-    print(f"injected {n} {a.type} hostile(s) into {c.path}")
-    print(f"ground truth: {c.counts()}")
+    print(f"injicerade {n} {a.type}-fiende(r) i {c.path}")
+    print(f"facit: {c.counts()}")
 
 
 def cmd_add_protesters(a):
     c = Corpus.load(a.corpus)
     n = generate.add_protesters(c, a.type, a.count, a.seed)
-    print(f"injected a {a.type} group of {n} into {c.path}")
-    print(f"ground truth: {c.counts()}")
+    print(f"injicerade en {a.type}-grupp på {n} i {c.path}")
+    print(f"facit: {c.counts()}")
 
 
 def build_parser():
     p = argparse.ArgumentParser(
         prog="7s-generator", description=__doc__, formatter_class=_Fmt,
-        epilog="Run with no command (just `7s-generator`) to open an interactive shell.\n\n"
-               "Typical flow:\n"
-               "  1. generate       build a normal-activity corpus\n"
-               "  2. add-hostiles   layer a threat cell on top       (optional)\n"
-               "  3. add-protesters layer benign noise on top        (optional)\n"
-               "  4. feed           drip the corpus into a folder     (optional)\n\n"
-               "Run `7s-generator <command> -h` for a command's options and an example.")
+        epilog="Kör utan kommando (bara `7s-generator`) för att öppna ett interaktivt skal.\n\n"
+               "Typiskt arbetsflöde:\n"
+               "  1. generate       bygg en normalkorpus\n"
+               "  2. add-hostiles   lägg på en hotcell             (valfritt)\n"
+               "  3. add-protesters lägg på godartat brus          (valfritt)\n"
+               "  4. feed           mata ut korpusen till en mapp  (valfritt)\n\n"
+               "Kör `7s-generator <kommando> -h` för ett kommandos flaggor och ett exempel.")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     g = sub.add_parser(
-        "generate", help="normal-activity corpus", formatter_class=_Fmt,
-        description="Generate a corpus of normal civilian reports around an area of "
-                    "interest over a time window. Deterministic: same --seed => same corpus.",
-        epilog="Example:\n"
+        "generate", help="normalkorpus (normal aktivitet)", formatter_class=_Fmt,
+        description="Generera en korpus av normala civila rapporter runt ett område av "
+                    "intresse (AOI) över ett tidsfönster. Deterministiskt: samma --seed => "
+                    "samma korpus.",
+        epilog="Exempel:\n"
                "  7s-generator generate \\\n"
                "    --aoi 60.345,17.422 --radius 3 --area airport \\\n"
                "    --from 2026-06-15 --days 14 \\\n"
-               "    --callsigns AQ,BQ,CQ,DQ --name \"Tierp flygfalt\" \\\n"
-               "    --out ./corpus_tierp")
+               "    --callsigns AQ,BQ,CQ,DQ --name \"Tierp flygfält\" \\\n"
+               "    --out ./korpus_tierp")
     g.add_argument("--aoi", nargs="+", action=_AoiAction, required=True, metavar="LAT,LON",
-                   help="area-of-interest centre, decimal degrees, latitude first "
-                        "(e.g. 60.345,17.422; a space after the comma is fine)")
+                   help="områdets mittpunkt (AOI), decimalgrader, latitud först "
+                        "(t.ex. 60.345,17.422; mellanslag efter kommatecknet går bra)")
     g.add_argument("--radius", type=float, default=3.0, metavar="KM",
-                   help="location scatter radius from the AOI, km (>0, typ. 1-20)")
+                   help="spridningsradie för platser från AOI, km (>0, vanl. 1–20)")
     g.add_argument("--area", choices=sorted(AREAS), default="rural",
-                   help="area type (sets vocabulary and base report frequency)")
-    g.add_argument("--from", type=_date, required=True, metavar="YYYY-MM-DD", help="start date")
-    g.add_argument("--to", type=_date, metavar="YYYY-MM-DD",
-                   help="end date, inclusive (overrides --days if given)")
+                   help="områdestyp (styr ordförråd och basfrekvens för rapporter)")
+    g.add_argument("--from", type=_date, required=True, metavar="ÅÅÅÅ-MM-DD", help="startdatum")
+    g.add_argument("--to", type=_date, metavar="ÅÅÅÅ-MM-DD",
+                   help="slutdatum, inklusive (åsidosätter --days om angivet)")
     g.add_argument("--days", type=int, default=14, metavar="N",
-                   help="window length in days when --to omitted (>=1)")
+                   help="fönsterlängd i dagar när --to utelämnas (>=1)")
     g.add_argument("--callsigns", type=_callsigns, default=["AQ", "BQ", "CQ", "DQ"],
-                   metavar="AQ,BQ,…", help="platoon callsigns, comma-separated (one sector each, >=1)")
-    g.add_argument("--name", default="objektet", help="AOI name, used in threat prose")
+                   metavar="AQ,BQ,…", help="plutonens anropssignaler, kommaseparerade (en sektor var, >=1)")
+    g.add_argument("--name", default="objektet", help="AOI-namn, används i hottexten")
     g.add_argument("--reports", type=int, metavar="N",
-                   help="override the auto report count (default: frequency x days x season)")
+                   help="åsidosätt automatiskt rapportantal (standard: frekvens × dagar × årstid)")
     g.add_argument("--images", action="store_true",
-                   help="attach corroborating plate photos to plate reports (needs Pillow)")
+                   help="bifoga bekräftande skyltfoton till skyltrapporter (kräver Pillow)")
     g.add_argument("--obsidian", action="store_true",
-                   help="Obsidian-compatible output: image embeds as `## Bilagor` + "
-                        "`![[wikilink]]` in per-message folders, exactly matching the source "
-                        "app (default: portable standard-Markdown `![](attachments/…)`). "
-                        "Only affects reports that carry a photo (--images).")
+                   help="Obsidian-kompatibel utdata: bildinbäddningar som `## Bilagor` + "
+                        "`![[wikilänk]]` i per-meddelande-mappar, identiskt med källappen "
+                        "(standard: portabel standard-Markdown `![](attachments/…)`). "
+                        "Påverkar bara rapporter med foto (--images).")
     g.add_argument("--seed", type=int, default=2026, metavar="N",
-                   help="RNG seed (same seed => same corpus)")
-    g.add_argument("--out", required=True, metavar="DIR", help="output corpus directory")
+                   help="slumpfrö (samma frö => samma korpus)")
+    g.add_argument("--out", required=True, metavar="MAPP", help="utmatningskatalog för korpusen")
     g.set_defaults(func=cmd_generate)
 
     h = sub.add_parser(
-        "add-hostiles", help="inject a hostile cell", formatter_class=_Fmt,
-        description="Layer a hostile cell onto an existing corpus, near the AOI, "
-                    "time-biased, each hostile recurring 1-4x. Detectable only as a pattern.",
-        epilog="Example:\n  7s-generator add-hostiles --corpus ./corpus_tierp --type recon")
-    h.add_argument("--corpus", required=True, metavar="DIR", help="existing corpus directory")
-    h.add_argument("--type", choices=sorted(HOSTILES), required=True, help="threat cell behaviour")
+        "add-hostiles", help="injicera en hotcell", formatter_class=_Fmt,
+        description="Lägg på en hotcell på en befintlig korpus, nära AOI, tidsviktad, där "
+                    "varje fiende återkommer 1–4×. Upptäckbar endast som ett mönster.",
+        epilog="Exempel:\n  7s-generator add-hostiles --corpus ./korpus_tierp --type recon")
+    h.add_argument("--corpus", required=True, metavar="MAPP", help="befintlig korpuskatalog")
+    h.add_argument("--type", choices=sorted(HOSTILES), required=True, help="hotcellens beteende")
     h.add_argument("--count", type=int, metavar="N",
-                   help="number of distinct hostiles (default: random 2-10)")
-    h.add_argument("--seed", type=int, default=7, metavar="N", help="RNG seed")
+                   help="antal DISTINKTA fiender/personer (standard: slumpvis 2–10). Varje "
+                        "fiende återkommer flera gånger (1–4× beroende på typ), så antalet "
+                        "rapporter blir count × återkomster — alltså mer än count.")
+    h.add_argument("--seed", type=int, default=7, metavar="N", help="slumpfrö")
     h.set_defaults(func=cmd_add_hostiles)
 
     r = sub.add_parser(
-        "add-protesters", help="inject challenging civilians (noise)", formatter_class=_Fmt,
-        description="Layer a benign but clustered group (gathering at one location on one "
-                    "day) onto a corpus, to stress a detector's precision.",
-        epilog="Example:\n  7s-generator add-protesters --corpus ./corpus_tierp --type miljoaktivister")
-    r.add_argument("--corpus", required=True, metavar="DIR", help="existing corpus directory")
-    r.add_argument("--type", choices=sorted(PROTESTERS), required=True, help="group kind")
+        "add-protesters", help="injicera utmanande civila (brus)", formatter_class=_Fmt,
+        description="Lägg på en godartad men klustrad grupp (samlas på en plats under en dag) "
+                    "på en korpus, för att pröva en detektors precision.",
+        epilog="Exempel:\n  7s-generator add-protesters --corpus ./korpus_tierp --type miljöaktivister")
+    r.add_argument("--corpus", required=True, metavar="MAPP", help="befintlig korpuskatalog")
+    r.add_argument("--type", choices=sorted(PROTESTERS), required=True, help="grupptyp")
     r.add_argument("--count", type=int, metavar="N",
-                   help="group size (default: the profile's range)")
-    r.add_argument("--seed", type=int, default=11, metavar="N", help="RNG seed")
+                   help="gruppstorlek = antal rapporter i klustret (standard: profilens "
+                        "intervall). Här blir antalet protestrapporter exakt count — alla "
+                        "samma grupp, en plats, en dag.")
+    r.add_argument("--seed", type=int, default=11, metavar="N", help="slumpfrö")
     r.set_defaults(func=cmd_add_protesters)
 
     f = sub.add_parser(
-        "feed", help="drip a corpus into a destination folder", formatter_class=_Fmt,
-        description="Deliver a corpus's reports from the source folder into a destination "
-                    "folder in chronological order, mimicking a central app trickling "
-                    "messages out over time. Referenced image attachments are copied too, "
-                    "so embeds resolve. Interactive REPL by default; the flags below are "
-                    "one-shot for scripts/CI.",
-        epilog="Examples:\n"
-               "  7s-generator feed --corpus ./corpus_tierp --dest ./inbox            # REPL\n"
-               "  7s-generator feed --corpus ./corpus_tierp --dest ./inbox --send 5   # one-shot\n"
-               "  7s-generator feed --corpus ./corpus_tierp --dest ./inbox --auto 5   # ~5-min replay")
-    f.add_argument("--corpus", required=True, metavar="DIR", help="source corpus directory")
-    f.add_argument("--dest", required=True, metavar="DIR",
-                   help="destination folder to drip reports into (any directory)")
-    f.add_argument("--send", type=int, metavar="N", help="one-shot: deliver the next N and exit")
-    f.add_argument("--auto", type=float, metavar="MINS", help="one-shot: replay over ~MINS and exit")
-    f.add_argument("--reset", action="store_true", help="one-shot: clear delivered reports and exit")
-    f.add_argument("--status", action="store_true", help="one-shot: print progress and exit")
+        "feed", help="mata ut en korpus till en målmapp", formatter_class=_Fmt,
+        description="Leverera en korpus rapporter från källmappen till en målmapp i "
+                    "kronologisk ordning, som en central app som droppar ut meddelanden över "
+                    "tid. Refererade bildbilagor kopieras också så att inbäddningar fungerar. "
+                    "Interaktivt skal som standard; flaggorna nedan är engångsåtgärder för "
+                    "skript/CI.",
+        epilog="Exempel:\n"
+               "  7s-generator feed --corpus ./korpus_tierp --dest ./inkorg            # skal\n"
+               "  7s-generator feed --corpus ./korpus_tierp --dest ./inkorg --send 5   # engång\n"
+               "  7s-generator feed --corpus ./korpus_tierp --dest ./inkorg --auto 5   # ~5-min uppspelning")
+    f.add_argument("--corpus", required=True, metavar="MAPP", help="källkatalog för korpusen")
+    f.add_argument("--dest", required=True, metavar="MAPP",
+                   help="målmapp att droppa rapporter till (valfri katalog)")
+    f.add_argument("--send", type=int, metavar="N", help="engång: leverera nästa N och avsluta")
+    f.add_argument("--auto", type=float, metavar="MIN", help="engång: spela upp över ~MIN och avsluta")
+    f.add_argument("--reset", action="store_true", help="engång: rensa levererade rapporter och avsluta")
+    f.add_argument("--status", action="store_true", help="engång: skriv ut status och avsluta")
     f.set_defaults(func=cmd_feed)
     return p
 

@@ -7,7 +7,8 @@ wraps the same commands as the one-shot CLI — generate / add-hostiles / add-pr
   * a remembered *active corpus* so augment/feed commands don't retype --corpus,
   * a background, pausable auto-feed (feed --auto) that leaves the prompt live.
 
-Command names and flags stay English so scripts/CI behave identically to the CLI."""
+Command names and flags stay English so scripts/CI behave identically to the CLI;
+the on-screen text is Swedish."""
 from pathlib import Path
 import shlex
 
@@ -18,32 +19,43 @@ from .cli import build_parser
 _AUGMENT = ("add-hostiles", "add-protesters")
 _PARSED = ("generate", "add-hostiles", "add-protesters", "feed")
 
-WELCOME = r"""
-  7S-generator — interactive shell
-  Build a synthetic 7S corpus, layer threats/noise, then drip it to a folder.
+# Short banner shown at startup — keep it light for someone who uses this rarely.
+WELCOME = """
+  7S-generator — bygg och mata ut syntetiska 7S-rapporter.
+
+  Kom igång:
+    generate --aoi 60.3,17.4 --area airport --from 2026-06-15 --out ./korpus
+    add-hostiles --type recon             lägg till en hotcell
+    add-protesters --type demonstranter   lägg till brus
+    feed --dest ./inkorg --auto 10        mata ut rapporter (i bakgrunden)
+
+  Skriv 'hjälp' för alla kommandon, 'avsluta' för att gå ur.
 """
 
+# Full reference shown on `hjälp`.
 HELP = """\
-Commands (each takes the same flags as `7s-generator <cmd> -h`):
-  generate --aoi LAT,LON --from YYYY-MM-DD --out DIR [--area .. --days .. --images .. --obsidian]
-                      build a normal-activity corpus; becomes the active corpus
-                      (--obsidian => exact app format; default => portable Markdown)
-  add-hostiles --type TYPE [--corpus DIR] [--count N]
-                      inject a hostile cell (recon/sabotage/infiltration/terrorism)
-  add-protesters --type TYPE [--corpus DIR] [--count N]
-                      inject a benign cluster (demonstranter/miljoaktivister/…)
-  feed --dest DIR [--corpus DIR] [--auto MINS | --send N | --status | --reset]
-                      drip reports to any folder; --auto runs in the background
+Kommandon (samma flaggor som `7s-generator <kmd> -h`):
+  generate --aoi LAT,LON --from ÅÅÅÅ-MM-DD --out MAPP [--area .. --days .. --images .. --obsidian]
+                      bygg en normalkorpus; blir den aktiva korpusen
+                      (--obsidian => exakt appformat; standard => portabel Markdown)
+  add-hostiles --type TYP [--corpus MAPP] [--count N]
+                      injicera en hotcell (recon/sabotage/infiltration/terrorism)
+                      --count = antal personer; var och en ger flera rapporter (1–4×)
+  add-protesters --type TYP [--corpus MAPP] [--count N]
+                      injicera ett godartat kluster (demonstranter/miljöaktivister/…)
+                      --count = antal rapporter i klustret
+  feed --dest MAPP [--corpus MAPP] [--auto MIN | --send N | --status | --reset]
+                      mata ut rapporter till valfri mapp; --auto kör i bakgrunden
 
 Session:
-  use DIR             set the active corpus (used when --corpus is omitted)
-  status              show the active corpus and any running feed
+  use MAPP            sätt aktiv korpus (används när --corpus utelämnas)
+  status             visa aktiv korpus och pågående matning
   pause | resume | stop
-                      control a background auto-feed (prompt stays live)
-  help                show this text
-  quit                leave (stops any running feed)
+                     styr en bakgrundsmatning (prompten är kvar)
+  hjälp              visa den här texten
+  avsluta            gå ur (stoppar pågående matning)
 
-Omit --corpus on add-*/feed and the active corpus is used. Run `<cmd> -h` for details.
+Utelämna --corpus på add-*/feed så används den aktiva korpusen. Kör `<kmd> -h` för detaljer.
 """
 
 
@@ -67,7 +79,7 @@ class Shell:
         frm = getattr(a, "from")
         days = (a.to - frm).days + 1 if a.to else a.days
         if days <= 0:
-            print("  ? empty date range")
+            print("  ? tomt datumintervall")
             return
         try:
             c = generate.build_normal(
@@ -75,15 +87,15 @@ class Shell:
                 start=frm, days=days, callsigns=a.callsigns, seed=a.seed,
                 reports=a.reports, obj_name=a.name, images=a.images, obsidian=a.obsidian)
         except Exception as e:                       # noqa: BLE001 - surface, don't crash
-            print(f"  ? generate failed: {e}")
+            print(f"  ? generering misslyckades: {e}")
             return
         self.current = Path(a.out)
-        print(f"  [{a.area}] wrote {len(c.ground_truth)} reports to {c.path} "
-              f"({days} days, season {c.meta['season']}, {len(c.meta['locations'])} locations)")
+        print(f"  [{a.area}] skrev {len(c.ground_truth)} rapporter till {c.path} "
+              f"({days} dagar, årstid {c.meta['season']}, {len(c.meta['locations'])} platser)")
         if a.images:
             n = sum(1 for r in c.ground_truth if r.get("plate"))
-            print(f"  rendered plate photos for {n} report(s)")
-        print(f"  active corpus: {self.current}   ground truth: {c.counts()}")
+            print(f"  renderade skyltfoton för {n} rapport(er)")
+        print(f"  aktiv korpus: {self.current}   facit: {c.counts()}")
 
     def _do_augment(self, cmd, a):
         try:
@@ -93,15 +105,15 @@ class Shell:
             return
         if cmd == "add-hostiles":
             n = generate.add_hostiles(c, a.type, a.count, a.seed)
-            print(f"  injected {n} {a.type} hostile(s) into {c.path}")
+            print(f"  injicerade {n} {a.type}-fiende(r) i {c.path}")
         else:
             n = generate.add_protesters(c, a.type, a.count, a.seed)
-            print(f"  injected a {a.type} group of {n} into {c.path}")
-        print(f"  ground truth: {c.counts()}")
+            print(f"  injicerade en {a.type}-grupp på {n} i {c.path}")
+        print(f"  facit: {c.counts()}")
 
     def _do_feed(self, a):
         if self.feeder and self.feeder.is_running():
-            print("  ? a feed is already running — 'pause'/'resume'/'stop' it first.")
+            print("  ? en matning pågår redan — 'pause'/'resume'/'stop' den först.")
             return
         try:
             f = feed.Feeder(a.corpus, a.dest)
@@ -118,47 +130,47 @@ class Shell:
         else:                                        # default action: background auto-feed
             mins = a.auto if a.auto is not None else 15.0
             if f.start_auto(mins) == "done":
-                print("  (all reports already delivered)")
+                print("  (alla rapporter redan levererade)")
             else:
-                print(f"  feeding {a.corpus} -> {a.dest} in background (~{mins:.0f} min).")
-                print("  prompt is live — type 'pause', 'resume', 'stop', or 'status'.")
+                print(f"  matar {a.corpus} -> {a.dest} i bakgrunden (~{mins:g} min).")
+                print("  prompten är kvar — skriv 'pause', 'resume', 'stop' eller 'status'.")
 
     # --- session commands ----------------------------------------------------
     def _use(self, tokens):
         if len(tokens) < 2:
-            print("  ? use <dir>")
+            print("  ? use <mapp>")
             return
         d = Path(tokens[1])
         if not d.exists():
-            print(f"  ? not found: {d}")
+            print(f"  ? hittades inte: {d}")
             return
         self.current = d
-        print(f"  active corpus: {d}")
+        print(f"  aktiv korpus: {d}")
 
     def _status(self):
         if self.current:
             try:
-                print(f"  active corpus: {self.current}   {Corpus.load(self.current).counts()}")
+                print(f"  aktiv korpus: {self.current}   {Corpus.load(self.current).counts()}")
             except Exception:                        # noqa: BLE001
-                print(f"  active corpus: {self.current}")
+                print(f"  aktiv korpus: {self.current}")
         else:
-            print("  no active corpus (run 'generate' or 'use <dir>')")
+            print("  ingen aktiv korpus (kör 'generate' eller 'use <mapp>')")
         if self.feeder:
             self.feeder.status()
 
     def _feed_control(self, cmd):
         if not (self.feeder and self.feeder.is_running()):
-            print("  (no feed running)")
+            print("  (ingen matning pågår)")
             return
         if cmd == "pause":
             self.feeder.pause()
-            print("  paused.")
+            print("  pausad.")
         elif cmd == "resume":
             self.feeder.resume()
-            print("  resumed.")
+            print("  återupptagen.")
         elif cmd == "stop":
             self.feeder.stop()
-            print("  stopped.")
+            print("  stoppad.")
 
     # --- dispatch / loop -----------------------------------------------------
     def dispatch(self, line):
@@ -172,9 +184,9 @@ class Shell:
             return True
         cmd = tokens[0].lower()
 
-        if cmd in ("quit", "exit", "q"):
+        if cmd in ("quit", "exit", "q", "avsluta"):
             return False
-        if cmd == "help":
+        if cmd in ("help", "hjälp", "hjalp", "?"):
             print(HELP)
             return True
         if cmd == "use":
@@ -193,7 +205,7 @@ class Shell:
                 if self.current:
                     tokens += ["--corpus", str(self.current)]
                 else:
-                    print("  ? no active corpus — run 'generate', 'use <dir>', or pass --corpus")
+                    print("  ? ingen aktiv korpus — kör 'generate', 'use <mapp>' eller ange --corpus")
                     return True
             args = self._parse(tokens)
             if args is None:
@@ -206,12 +218,11 @@ class Shell:
                 self._do_feed(args)
             return True
 
-        print(f"  ? unknown command: {cmd}   (type 'help')")
+        print(f"  ? okänt kommando: {cmd}   (skriv 'hjälp')")
         return True
 
     def run(self):
         print(WELCOME)
-        print(HELP)
         while True:
             try:
                 line = input("7S> ")
@@ -219,7 +230,7 @@ class Shell:
                 print()
                 break
             except KeyboardInterrupt:
-                print("\n(interrupt — type 'quit' to leave; a background feed keeps running)")
+                print("\n(avbrott — skriv 'avsluta' för att gå ur; en bakgrundsmatning fortsätter)")
                 continue
             if not self.dispatch(line):
                 break

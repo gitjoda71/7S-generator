@@ -36,7 +36,7 @@ class Feeder:
         self.dest.mkdir(parents=True, exist_ok=True)
         self.reports = _load(self.src)
         if not self.reports:
-            sys.exit(f"No reports found in {self.src}")
+            sys.exit(f"Inga rapporter hittades i {self.src}")
         self.idx = 0
         present = {p.name for p in self.dest.glob("*.md")}
         while self.idx < len(self.reports) and self.reports[self.idx][1].name in present:
@@ -68,7 +68,7 @@ class Feeder:
                 sent += 1
             done = self.idx >= len(self.reports)
         if done:
-            print("  (all reports delivered)")
+            print("  (alla rapporter levererade)")
         return sent
 
     # --- background auto-feed ------------------------------------------------
@@ -106,25 +106,25 @@ class Feeder:
         with self._lock:
             remaining = self.reports[self.idx:]
         if not remaining:
-            print("\n  (all reports already delivered)")
+            print("\n  (alla rapporter redan levererade)")
             return
         t0, t1 = remaining[0][0], self.reports[-1][0]
         span = (t1 - t0).total_seconds() or 1.0
         factor = span / (minutes * 60.0)
-        print(f"\n  Feeding {len(remaining)} reports over ~{minutes:g} min "
-              f"(≈{factor:.0f}× real time).")
+        print(f"\n  Matar {len(remaining)} rapporter över ~{minutes:g} min "
+              f"(≈{factor:.0f}× realtid).")
         prev = t0
         for ts, p in remaining:
             wait = min(max(0.0, (ts - prev).total_seconds() / factor), minutes * 60.0)
             if not self._interruptible_wait(wait):
-                print("\n  (feed stopped)")
+                print("\n  (matning stoppad)")
                 return
             with self._lock:
                 self._copy(p)
                 self.idx += 1
             print(f"\n  + {p.name}   [{ts:%a %H:%M}]")
             prev = ts
-        print("\n  (feed complete)")
+        print("\n  (matning klar)")
 
     def pause(self):
         self._paused.set()
@@ -154,38 +154,38 @@ class Feeder:
         so Ctrl-C stops it cleanly."""
         state = self.start_auto(minutes)
         if state == "done":
-            print("  (all reports already delivered)")
+            print("  (alla rapporter redan levererade)")
             return
-        print("  Ctrl-C to stop.")
+        print("  Ctrl-C för att stoppa.")
         try:
             while self.is_running():
                 self._thread.join(timeout=0.2)
         except KeyboardInterrupt:
             self.stop()
-            print("\n  stopped.")
+            print("\n  stoppad.")
 
     # --- status / reset ------------------------------------------------------
     def status(self):
         with self._lock:
             done, total = self.idx, len(self.reports)
             nxt = self.reports[self.idx] if done < total else None
-        state = "running" if self.is_running() else "idle"
+        state = "matar" if self.is_running() else "vilar"
         if self.is_running() and self.is_paused():
-            state = "paused"
-        print(f"  Delivered {done}/{total}  ({state}).")
+            state = "pausad"
+        print(f"  Levererat {done}/{total}  ({state}).")
         if nxt:
             ts, p = nxt
-            print(f"  Next: {p.name} [{ts:%a %Y-%m-%d %H:%M}]")
-        print(f"  Span: {self.reports[0][0]:%Y-%m-%d %H:%M} -> {self.reports[-1][0]:%Y-%m-%d %H:%M}")
+            print(f"  Nästa: {p.name} [{ts:%a %Y-%m-%d %H:%M}]")
+        print(f"  Spann: {self.reports[0][0]:%Y-%m-%d %H:%M} -> {self.reports[-1][0]:%Y-%m-%d %H:%M}")
 
     def reset(self):
         if self.is_running():
-            print("  ? a feed is running — 'stop' it first.")
+            print("  ? en matning pågår — 'stop' den först.")
             return
         with self._lock:
             r = sum(1 for p in self.dest.glob("*.md") for _ in [p.unlink()])
             self.idx = 0
-        print(f"  Removed {r} reports. Reset to start.")
+        print(f"  Tog bort {r} rapporter. Återställd till start.")
 
 
 def run(src, dest, once=None):
@@ -196,9 +196,9 @@ def run(src, dest, once=None):
         {"send": lambda: f.send(arg or 1), "auto": lambda: f.auto(arg or 15.0),
          "reset": f.reset, "status": f.status}[cmd]()
         return
-    print(f"Loaded {len(f.reports)} reports -> {f.dest}")
+    print(f"Laddade {len(f.reports)} rapporter -> {f.dest}")
     f.status()
-    print("Commands: send [n] | auto [mins] | pause | resume | stop | status | reset | quit")
+    print("Kommandon: send [n] | auto [min] | pause | resume | stop | status | reset | avsluta")
     while True:
         try:
             raw = input("feed> ").strip()
@@ -209,33 +209,33 @@ def run(src, dest, once=None):
             continue
         parts = raw.split()
         cmd = parts[0].lower()
-        if cmd in ("quit", "exit", "q"):
+        if cmd in ("quit", "exit", "q", "avsluta"):
             f.stop()
             break
         elif cmd == "send":
             if f.is_running():
-                print("  ? a feed is running — 'pause' or 'stop' it first.")
+                print("  ? en matning pågår — 'pause' eller 'stop' den först.")
             else:
                 f.send(int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1)
         elif cmd == "auto":
             mins = float(parts[1]) if len(parts) > 1 else 15.0
             state = f.start_auto(mins)
             if state == "running":
-                print("  ? a feed is already running — 'stop' it first.")
+                print("  ? en matning pågår redan — 'stop' den först.")
             elif state == "done":
-                print("  (all reports already delivered)")
+                print("  (alla rapporter redan levererade)")
             else:
-                print("  feeding in background — 'pause' to hold, 'stop' to end.")
+                print("  matar i bakgrunden — 'pause' för att hålla, 'stop' för att avsluta.")
         elif cmd == "pause":
-            f.pause() if f.is_running() else print("  (no feed running)")
+            f.pause() if f.is_running() else print("  (ingen matning pågår)")
         elif cmd == "resume":
-            f.resume() if f.is_running() else print("  (no feed running)")
+            f.resume() if f.is_running() else print("  (ingen matning pågår)")
         elif cmd == "stop":
             f.stop()
-            print("  stopped.")
+            print("  stoppad.")
         elif cmd == "status":
             f.status()
         elif cmd == "reset":
             f.reset()
         else:
-            print("  ? send [n] | auto [mins] | pause | resume | stop | status | reset | quit")
+            print("  ? send [n] | auto [min] | pause | resume | stop | status | reset | avsluta")
