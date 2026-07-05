@@ -11,5 +11,8 @@ out/
 corpus_*/
 reports_*/
 
+# Downloaded reference material (e.g. sample reports from the source app)
+*.zip
+
 # OS / editor
 .DS_Store

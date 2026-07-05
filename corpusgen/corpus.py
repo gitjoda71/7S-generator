@@ -3,9 +3,14 @@ per report with its TRUE event type), and a meta.json describing how it was buil
 (AOI, radius, area type, dates, callsigns, locations) so the augment commands can
 inject hostiles/protesters consistently into the same area and time window."""
 import json
+import re
+import shutil
 from pathlib import Path
 
 from .render import render
+
+# per-message attachment folder, e.g. 20260626111626_261116-<sender>
+_ATT_DIR = re.compile(r"^\d{14}_\d{6}-")
 
 
 class Corpus:
@@ -15,17 +20,11 @@ class Corpus:
         self.ground_truth = []
         self._seen_tnr = {}
 
-    @property
-    def attachments(self):
-        """Corpus-local attachments folder (plate mockups, etc.)."""
-        return self.path / "attachments"
-
-    def ensure_attachments(self, clear_plates=False):
-        self.attachments.mkdir(parents=True, exist_ok=True)
-        if clear_plates:
-            for old in self.attachments.glob("plate_*.jpg"):
-                old.unlink()
-        return self.attachments
+    def clear_attachments(self):
+        """Remove the per-message attachment folders kept beside the .md reports."""
+        for d in self.path.glob("*"):
+            if d.is_dir() and _ATT_DIR.match(d.name):
+                shutil.rmtree(d)
 
     # --- create / load -------------------------------------------------------
     @classmethod
@@ -34,6 +33,7 @@ class Corpus:
         c.path.mkdir(parents=True, exist_ok=True)
         for old in c.path.glob("*.md"):
             old.unlink()
+        c.clear_attachments()
         c.meta = meta
         return c
 
@@ -55,8 +55,11 @@ class Corpus:
         """Write one report + its ground-truth row. Returns the filename."""
         base = f"TNR{rec['tnr']}"
         self._seen_tnr[base] = self._seen_tnr.get(base, 0) + 1
-        stem = base if self._seen_tnr[base] == 1 else f"{base}_{self._seen_tnr[base]}"
-        fname = f"{stem}.md"
+        count = self._seen_tnr[base]
+        if count > 1:  # collision: carry the _N suffix into tnr (field, **TNR:**, filename)
+            rec = dict(rec)
+            rec["tnr"] = f"{rec['tnr']}_{count}"
+        fname = f"TNR{rec['tnr']}.md"
         (self.path / fname).write_text(render(rec), encoding="utf-8")
         self.ground_truth.append({
             "file": fname, "id": f"7S-{rec['uuid']}", "tnr": rec["tnr"],

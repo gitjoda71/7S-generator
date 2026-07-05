@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 _FM_TIME = re.compile(r"^tidpunkt:\s*(.+)$", re.MULTILINE)
-_EMBED = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")  # standard-Markdown image embed
+_EMBED = re.compile(r"!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]")  # Obsidian wikilink image embed
 
 
 def _load(src):

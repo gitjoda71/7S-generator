@@ -50,7 +50,9 @@ def _advance(origin, steps, stop):
     return chr(cur)
 
 
-def latlon_to_mgrs(lat, lon, digits=5):
+def latlon_to_mgrs(lat, lon, digits=5, sep=""):
+    """MGRS string. `sep=" "` renders the grid-reference spaced (e.g.
+    "33VXF 66651 79308"); the default runs it together ("33VXF6665179308")."""
     zone, easting, northing = _latlon_to_utm(lat, lon)
     s = zone % 6 or 6
     band = _BANDS[min(int((lat + 80) // 8), len(_BANDS) - 1)]
@@ -59,4 +61,4 @@ def latlon_to_mgrs(lat, lon, digits=5):
     scale = 10 ** (5 - digits)
     e = int((easting % 100000) / scale)
     n = int((northing % 100000) / scale)
-    return f"{zone}{band}{col}{row}{e:0{digits}d}{n:0{digits}d}"
+    return f"{zone}{band}{col}{row}{sep}{e:0{digits}d}{sep}{n:0{digits}d}"

@@ -1,6 +1,7 @@
-"""Render a report record into 7S-rapport markdown: Händelse free-prose, MGRS grid
-in Ställe, signal_* frontmatter, an optional Symbol, and (when a photo is attached)
-a standard-Markdown image embed so the report renders in any Markdown viewer."""
+"""Render a report record into 7S-rapport markdown: Händelse free-prose, a spaced
+MGRS grid in Ställe, signal_* frontmatter, an optional Symbol, and (when a photo is
+attached) a `## Bilagor` section with an Obsidian wikilink embed — matching the
+format of reports captured by the source app."""
 
 
 def tnr_from(dt):
@@ -13,26 +14,24 @@ def iso(dt):
 
 def render(rec):
     tnr = rec["tnr"]
-    fm = ["---", f"id: 7S-{rec['uuid']}", "typ: 7S-rapport", f'tnr: "{tnr}"',
-          f'tidpunkt: "{rec["tidpunkt"]}"']
+    lines = ["---", f"id: 7S-{rec['uuid']}", "typ: 7S-rapport", f'tnr: "{tnr}"',
+             f'tidpunkt: "{rec["tidpunkt"]}"']
     if rec.get("signal_tidpunkt"):
-        fm.append(f'signal_tidpunkt: "{rec["signal_tidpunkt"]}"')
+        lines.append(f'signal_tidpunkt: "{rec["signal_tidpunkt"]}"')
     if rec.get("sender"):
-        fm += [f'signal_avsandare_nummer: "{rec["sender"]}"',
-               f'signal_avsandare_id: "{rec["sender"]}"']
-    fm.append(f'plats: "{rec["plats"]}"')
+        lines += [f'signal_avsandare_nummer: "{rec["sender"]}"',
+                  f'signal_avsandare_id: "{rec["sender"]}"']
+    lines.append(f'plats: "{rec["plats"]}"')
     if rec.get("lat") is not None:
-        fm += [f"lat: {rec['lat']}", f"lon: {rec['lon']}",
-               f'location: "{rec["lat"]},{rec["lon"]}"']
-    if rec.get("image"):
-        fm.append(f'bilagor: ["{rec["image"]}"]')
-    fm += [f"sagesman: {rec['callsign']}", "---", ""]
+        lines += [f"lat: {rec['lat']:.5f}", f"lon: {rec['lon']:.5f}",
+                  f'location: "{rec["lat"]:.5f},{rec["lon"]:.5f}"']
+    lines += [f"sagesman: {rec['callsign']}", "---", ""]
 
-    body = [f"**TNR:** {tnr}", "", f"**Stund:** {rec['stund']}", "",
-            f"**Ställe:** {rec['stalle']}", "", f"**Händelse:** {rec['handelse']}", ""]
+    lines += [f"**TNR:** {tnr}", "", f"**Stund:** {rec['stund']}", "",
+              f"**Ställe:** {rec['stalle']}", "", f"**Händelse:** {rec['handelse']}", ""]
     if rec.get("symbol"):
-        body += [f"**Symbol:** {rec['symbol']}", ""]
-    body += [f"**Sagesman:** {rec['callsign']}", "", "**Sedan:** -", ""]
+        lines += [f"**Symbol:** {rec['symbol']}", ""]
+    lines += [f"**Sagesman:** {rec['callsign']}", "", "**Sedan:** -", ""]
     if rec.get("image"):
-        body += [f"![{rec['image']}](attachments/{rec['image']})", ""]
-    return "\n".join(fm) + "\n".join(body) + "\n"
+        lines += ["## Bilagor", "", f"![[{rec['image']}]]", ""]
+    return "\n".join(lines) + "\n"

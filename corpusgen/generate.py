@@ -40,8 +40,16 @@ def build_locations(lat, lon, radius, area, callsigns, rng, per=4):
             name = places[pi % len(places)]
             pi += 1
             locs.append({"callsign": cs, "sector": i, "name": name,
-                         "lat": plat, "lon": plon, "mgrs": latlon_to_mgrs(plat, plon)})
+                         "lat": plat, "lon": plon, "mgrs": latlon_to_mgrs(plat, plon, sep=" ")})
     return locs
+
+
+def _attachment_dir(rec):
+    """Per-message attachment folder, matching the source app's shape:
+    <signaltime>_<DDHHMM>-<sender>."""
+    ts = datetime.fromisoformat(rec.get("signal_tidpunkt") or rec["tidpunkt"])
+    sender = rec.get("sender") or rec["uuid"]
+    return f"{ts:%Y%m%d%H%M%S}_{ts:%d%H%M}-{sender}"
 
 
 def _civ_time(start, days, rng, day_band):
@@ -96,7 +104,6 @@ def build_normal(out, lat, lon, radius, area, start, days, callsigns, seed,
     render_plate = None
     if images:
         from .images import render_plate  # lazy: only needs Pillow with --images
-        corpus.ensure_attachments(clear_plates=True)
 
     for _ in range(reports):
         loc = rng.choice(locs)
@@ -111,9 +118,12 @@ def build_normal(out, lat, lon, radius, area, start, days, callsigns, seed,
         if rng.random() < 0.12:  # occasional benign appearance (season-appropriate)
             rec["symbol"] = f"{rng.choice(smeta['upper'])}, {rng.choice(smeta['accessory'])}"
         if images and rec["plate"]:  # a corroborating photo of the typed plate
+            folder = _attachment_dir(rec)
             img_name = f"plate_{rec['uuid'][:8]}.jpg"
-            render_plate(rec["plate"], corpus.attachments / img_name)
-            rec["image"] = img_name
+            d = corpus.path / folder
+            d.mkdir(parents=True, exist_ok=True)
+            render_plate(rec["plate"], d / img_name)
+            rec["image"] = f"{folder}/{img_name}"
         corpus.add(rec, "civil")
 
     corpus.save()
