@@ -126,12 +126,19 @@ class Shell:
         except ValueError as e:
             print(f"  ? {e}")
 
+    @staticmethod
+    def _bg_print(msg):
+        """Background-feed messages: print, then redraw the prompt so the line
+        the user is typing at 7S> isn't left visually swallowed."""
+        print(msg)
+        print("7S> ", end="", flush=True)
+
     def _do_feed(self, a):
         if self.feeder and self.feeder.is_running():
             print("  ? en matning pågår redan — 'pause'/'resume'/'stop' den först.")
             return
         try:
-            f = feed.Feeder(a.corpus, a.dest)
+            f = feed.Feeder(a.corpus, a.dest, sink=self._bg_print)
         except SystemExit as e:                      # Feeder aborts if no reports found
             print(f"  ? {e}")
             return

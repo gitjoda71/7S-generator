@@ -30,7 +30,10 @@ def _load(src):
 
 
 class Feeder:
-    def __init__(self, src, dest):
+    def __init__(self, src, dest, sink=print):
+        # `sink` receives the background auto-feed's progress messages, so an
+        # embedder (shell prompt, GUI log) can route them; default is print.
+        self._sink = sink
         self.src = Path(src)
         self.dest = Path(dest)
         self.dest.mkdir(parents=True, exist_ok=True)
@@ -106,25 +109,25 @@ class Feeder:
         with self._lock:
             remaining = self.reports[self.idx:]
         if not remaining:
-            print("\n  (alla rapporter redan levererade)")
+            self._sink("\n  (alla rapporter redan levererade)")
             return
         t0, t1 = remaining[0][0], self.reports[-1][0]
         span = (t1 - t0).total_seconds() or 1.0
         factor = span / (minutes * 60.0)
-        print(f"\n  Matar {len(remaining)} rapporter över ~{minutes:g} min "
-              f"(≈{factor:.0f}× realtid).")
+        self._sink(f"\n  Matar {len(remaining)} rapporter över ~{minutes:g} min "
+                   f"(≈{factor:.0f}× realtid).")
         prev = t0
         for ts, p in remaining:
             wait = min(max(0.0, (ts - prev).total_seconds() / factor), minutes * 60.0)
             if not self._interruptible_wait(wait):
-                print("\n  (matning stoppad)")
+                self._sink("\n  (matning stoppad)")
                 return
             with self._lock:
                 self._copy(p)
                 self.idx += 1
-            print(f"\n  + {p.name}   [{ts:%a %H:%M}]")
+            self._sink(f"\n  + {p.name}   [{ts:%a %H:%M}]")
             prev = ts
-        print("\n  (matning klar)")
+        self._sink("\n  (matning klar)")
 
     def pause(self):
         self._paused.set()

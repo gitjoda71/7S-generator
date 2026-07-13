@@ -5,6 +5,7 @@
   add-protesters  injicera en grupp (demonstranter/miljöaktivister/fredsaktivister)
   feed            mata ut en korpus till en målmapp över tid
   score           poängsätt en detektors utpekningar mot korpusens facit
+  gui             öppna den lokala webb-GUI:n (127.0.0.1, inga beroenden)
 """
 import argparse
 import re
@@ -96,6 +97,11 @@ def cmd_add_protesters(a):
     n = generate.add_protesters(c, a.type, a.count, a.seed)
     print(f"injicerade en {a.type}-grupp på {n} i {c.path}")
     print(f"facit: {c.counts()}")
+
+
+def cmd_gui(a):
+    from . import gui
+    gui.run(port=a.port, open_browser=not a.no_browser)
 
 
 def cmd_score(a):
@@ -230,6 +236,16 @@ def build_parser():
     s.add_argument("--min-f1", type=float, metavar="X",
                    help="CI-grind: avsluta med felkod om icke-civil-F1 < X")
     s.set_defaults(func=cmd_score)
+
+    w = sub.add_parser(
+        "gui", help="öppna den lokala webb-GUI:n", formatter_class=_Fmt,
+        description="Starta en lokal webb-GUI och öppna webbläsaren. Lyssnar endast på "
+                    "127.0.0.1, kräver inga beroenden och gör inga nätverksanrop — "
+                    "fungerar air-gapped.",
+        epilog="Exempel:\n  7s-generator gui\n  7s-generator gui --port 7710 --no-browser")
+    w.add_argument("--port", type=int, default=7700, metavar="N", help="TCP-port att lyssna på")
+    w.add_argument("--no-browser", action="store_true", help="öppna inte webbläsaren automatiskt")
+    w.set_defaults(func=cmd_gui)
     return p
 
 

@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>7S-generator</title>
+<style>
+  :root {
+    --bg: #f4f4f0; --panel: #ffffff; --text: #1d211c; --muted: #5c6358;
+    --line: #d8d9d2; --accent: #3d5a3d; --accent-text: #ffffff;
+    --danger: #a03030; --ok: #2f6b2f; --log-bg: #14170f; --log-text: #cfd6c4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #171a15; --panel: #21251f; --text: #e4e7de; --muted: #9aa393;
+      --line: #363b33; --accent: #7fa36f; --accent-text: #14170f;
+      --danger: #e08080; --ok: #8fc98f; --log-bg: #0d0f0a; --log-text: #b9c2ab;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: baseline; gap: .8rem; padding: 1rem 1.4rem .4rem; }
+  header h1 { font-size: 1.25rem; margin: 0; letter-spacing: .03em; }
+  header .sub { color: var(--muted); font-size: .85rem; }
+  main { max-width: 880px; margin: 0 auto; padding: 0 1.4rem 3rem; }
+
+  nav[role=tablist] { display: flex; gap: .3rem; margin: .8rem 0 1rem; border-bottom: 1px solid var(--line); }
+  nav [role=tab] { border: 1px solid transparent; border-bottom: none; background: none; color: var(--muted);
+    padding: .45rem 1rem; font: inherit; cursor: pointer; border-radius: 8px 8px 0 0; }
+  nav [role=tab][aria-selected=true] { background: var(--panel); color: var(--text);
+    border-color: var(--line); font-weight: 600; }
+  nav [role=tab]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  section[role=tabpanel] { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 0 10px 10px 10px; padding: 1.2rem 1.4rem; }
+  section[hidden] { display: none; }
+
+  label { display: block; font-size: .82rem; color: var(--muted); margin-bottom: .15rem; }
+  input[type=text] { width: 100%; padding: .5rem .6rem; font: inherit; color: var(--text);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 7px; }
+  input:focus-visible { outline: 2px solid var(--accent); border-color: var(--accent); }
+  .row { display: flex; gap: .8rem; align-items: end; flex-wrap: wrap; margin-bottom: .9rem; }
+  .row > div { flex: 1; min-width: 130px; }
+  .row > div.narrow { flex: 0 0 8.5rem; }
+
+  button { font: inherit; padding: .5rem 1rem; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button.danger  { color: var(--danger); border-color: var(--danger); background: none; }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button.busy::after { content: ""; display: inline-block; width: .8em; height: .8em; margin-left: .5em;
+    border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%;
+    animation: spin .7s linear infinite; vertical-align: -0.1em; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .status { min-height: 1.3em; margin: .3rem 0 .6rem; font-size: .9rem; }
+  .status.err { color: var(--danger); }
+  .status.ok  { color: var(--ok); }
+
+  .active-corpus { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap;
+    padding: .6rem .8rem; background: var(--bg); border: 1px solid var(--line);
+    border-radius: 8px; margin-bottom: 1rem; }
+  .active-corpus code { font-size: .85rem; user-select: all; overflow-wrap: anywhere; }
+  .badge { font-size: .78rem; padding: .12rem .55rem; border-radius: 99px;
+    border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .badge.hot { color: var(--danger); border-color: var(--danger); }
+  .badge.prot { color: #9a7b1a; border-color: #9a7b1a; }
+  .copy { font-size: .78rem; padding: .2rem .6rem; }
+
+  .empty { color: var(--muted); padding: 1.2rem 0; }
+  .empty b { color: var(--text); }
+
+  progress { width: 100%; height: 12px; accent-color: var(--accent); }
+  .progress-line { display: flex; justify-content: space-between; font-size: .85rem;
+    color: var(--muted); margin: .25rem 0 .8rem; }
+  pre.log { background: var(--log-bg); color: var(--log-text); border-radius: 8px;
+    padding: .7rem .9rem; font-size: .8rem; line-height: 1.5; height: 14rem;
+    overflow: auto; margin: 0; white-space: pre-wrap; }
+  footer { text-align: center; color: var(--muted); font-size: .78rem; padding: 1rem; }
+  kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 .35em; font-size: .85em; }
+</style>
+</head>
+<body>
+<header>
+  <h1>7S-generator</h1>
+  <span class="sub">syntetiska 7S-rapportkorpusar — lokal GUI</span>
+</header>
+<main>
+  <nav role="tablist" aria-label="Flikar" id="tabs">
+    <button role="tab" aria-selected="false" data-tab="gen">Generera</button>
+    <button role="tab" aria-selected="true"  data-tab="korpus">Korpus</button>
+    <button role="tab" aria-selected="false" data-tab="feed">Mata ut</button>
+  </nav>
+
+  <!-- ============ GENERERA ============ -->
+  <section role="tabpanel" id="panel-gen" hidden>
+    <p class="empty">Generera-formuläret kommer i nästa version — kör tills vidare
+    <code>7s-generator generate …</code> i terminalen och välj korpusen under <b>Korpus</b>.</p>
+  </section>
+
+  <!-- ============ KORPUS ============ -->
+  <section role="tabpanel" id="panel-korpus">
+    <div id="korpus-active"></div>
+    <div class="row">
+      <div>
+        <label for="korpus-path">Korpusmapp (innehåller meta.json)</label>
+        <input type="text" id="korpus-path" placeholder="t.ex. C:\korpusar\korpus_tierp"
+               autocomplete="off" spellcheck="false">
+      </div>
+      <div class="narrow" style="flex:0 0 auto">
+        <button class="primary" id="korpus-use">Använd</button>
+      </div>
+    </div>
+    <div class="status" id="korpus-status" role="alert"></div>
+    <p class="empty" style="padding:0">Tips: <kbd>Enter</kbd> i fältet aktiverar korpusen.</p>
+  </section>
+
+  <!-- ============ MATA UT ============ -->
+  <section role="tabpanel" id="panel-feed" hidden>
+    <div id="feed-corpus-line" class="empty" style="padding:.2rem 0 .8rem"></div>
+    <div class="row">
+      <div>
+        <label for="feed-dest">Målmapp (dit rapporterna droppas)</label>
+        <input type="text" id="feed-dest" placeholder="t.ex. C:\7s\inkorg"
+               autocomplete="off" spellcheck="false">
+      </div>
+      <div class="narrow">
+        <label for="feed-min">Uppspelning, minuter</label>
+        <input type="text" id="feed-min" value="15" inputmode="decimal" autocomplete="off">
+      </div>
+    </div>
+    <div class="row" style="align-items:center">
+      <div style="flex:0 0 auto"><button class="primary" id="feed-start">Starta matning</button></div>
+      <div style="flex:0 0 auto"><button id="feed-send">Skicka 1 nu</button></div>
+      <div style="flex:0 0 auto"><button id="feed-pause">Pausa</button></div>
+      <div style="flex:0 0 auto"><button id="feed-stop">Stoppa</button></div>
+      <div style="flex:0 0 auto"><button class="danger" id="feed-reset">Återställ målmappen</button></div>
+    </div>
+    <div class="status" id="feed-status-msg" role="alert"></div>
+    <progress id="feed-bar" value="0" max="1"></progress>
+    <div class="progress-line"><span id="feed-progress-text">–</span><span id="feed-next"></span></div>
+    <label>Leveranslogg</label>
+    <pre class="log" id="feed-log" aria-live="polite">(ingen matning ännu)</pre>
+  </section>
+</main>
+<footer>lyssnar endast på 127.0.0.1 · fungerar utan internet</footer>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+
+/* ---------- api ---------- */
+async function api(path, body) {
+  const opts = body === undefined ? {} :
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  const r = await fetch(path, opts);
+  let j = {};
+  try { j = await r.json(); } catch (e) { /* tomt svar */ }
+  if (!r.ok) throw new Error(j.error || ("fel " + r.status));
+  return j;
+}
+
+/* busy(btn, fn): disabled direkt, spinner först efter 200 ms */
+async function busy(btn, fn) {
+  btn.disabled = true;
+  const t = setTimeout(() => btn.classList.add("busy"), 200);
+  try { return await fn(); }
+  finally { clearTimeout(t); btn.classList.remove("busy"); btn.disabled = false; }
+}
+
+function setStatus(el, msg, cls) {
+  el.textContent = msg || "";
+  el.className = "status" + (cls ? " " + cls : "");
+}
+
+/* ---------- flikar (klick + piltangenter) ---------- */
+const tabs = [...document.querySelectorAll("[role=tab]")];
+function showTab(name) {
+  tabs.forEach(t => t.setAttribute("aria-selected", String(t.dataset.tab === name)));
+  ["gen", "korpus", "feed"].forEach(n => $("panel-" + n).hidden = n !== name);
+  const focus = { korpus: "korpus-path", feed: "feed-dest" }[name];
+  if (focus) $(focus).focus();
+  localStorage.setItem("7s.tab", name);
+}
+tabs.forEach(t => t.addEventListener("click", () => showTab(t.dataset.tab)));
+$("tabs").addEventListener("keydown", e => {
+  const i = tabs.findIndex(t => t.getAttribute("aria-selected") === "true");
+  if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+    const j = (i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
+    tabs[j].focus(); showTab(tabs[j].dataset.tab);
+  }
+});
+
+/* ---------- korpus ---------- */
+function badge(k, v) {
+  const cls = k.startsWith("hostile") ? " hot" : (k.startsWith("protester") ? " prot" : "");
+  return `<span class="badge${cls}">${k} ${v}</span>`;
+}
+function renderState(st) {
+  const el = $("korpus-active");
+  if (!st.active_corpus) {
+    el.innerHTML = `<p class="empty"><b>Ingen aktiv korpus.</b> Klistra in sökvägen till en
+      korpusmapp nedan — eller generera en ny (terminalen tills vidare).</p>`;
+  } else {
+    const counts = st.counts ? Object.entries(st.counts).sort().map(([k, v]) => badge(k, v)).join(" ") : "";
+    el.innerHTML = `<div class="active-corpus">
+        <span>Aktiv korpus:</span> <code id="korpus-code">${st.active_corpus}</code>
+        <button class="copy" id="korpus-copy" title="Kopiera sökvägen">kopiera</button>
+        <span style="flex-basis:100%"></span>
+        ${st.reports != null ? `<span class="badge">${st.reports} rapporter</span>` : ""} ${counts}
+      </div>`;
+    $("korpus-copy").addEventListener("click", async () => {
+      await navigator.clipboard.writeText(st.active_corpus);
+      $("korpus-copy").textContent = "kopierad ✓";
+      setTimeout(() => { const b = $("korpus-copy"); if (b) b.textContent = "kopiera"; }, 1500);
+    });
+  }
+  $("feed-corpus-line").innerHTML = st.active_corpus
+    ? `Matar från: <code>${st.active_corpus}</code>`
+    : `<b>Ingen aktiv korpus</b> — välj en under fliken Korpus först.`;
+}
+async function refreshState() {
+  try { renderState(await api("/api/state")); } catch (e) { /* servern borta */ }
+}
+$("korpus-use").addEventListener("click", () => busy($("korpus-use"), async () => {
+  setStatus($("korpus-status"), "");
+  try {
+    const st = await api("/api/use", { path: $("korpus-path").value });
+    renderState(st);
+    localStorage.setItem("7s.korpus", $("korpus-path").value.trim());
+    setStatus($("korpus-status"), "aktiv korpus satt ✓", "ok");
+  } catch (e) { setStatus($("korpus-status"), e.message, "err"); }
+}));
+$("korpus-path").addEventListener("keydown", e => { if (e.key === "Enter") $("korpus-use").click(); });
+
+/* ---------- mata ut ---------- */
+let confirmReset = 0;
+function renderFeed(fs) {
+  const running = fs.exists && fs.running, paused = fs.paused === true;
+  $("feed-start").disabled = running;
+  $("feed-send").disabled = running;
+  $("feed-pause").disabled = !running;
+  $("feed-pause").textContent = paused ? "Återuppta" : "Pausa";
+  $("feed-stop").disabled = !running;
+  $("feed-reset").disabled = running || !fs.exists;
+  if (fs.exists) {
+    $("feed-bar").max = fs.total || 1;
+    $("feed-bar").value = fs.delivered || 0;
+    $("feed-progress-text").textContent =
+      `${fs.delivered}/${fs.total} levererade` + (running ? (paused ? " · pausad" : " · matar") : "");
+    $("feed-next").textContent = fs.next ? `nästa: ${fs.next.file} [${fs.next.ts}]` : "allt levererat ✓";
+    const log = $("feed-log");
+    const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+    log.textContent = (fs.log && fs.log.length) ? fs.log.join("\n") : "(tom logg)";
+    if (atBottom) log.scrollTop = log.scrollHeight;
+  } else {
+    $("feed-progress-text").textContent = "–";
+    $("feed-next").textContent = "";
+  }
+}
+async function pollFeed() {
+  try { renderFeed(await api("/api/feed/status")); } catch (e) { /* servern borta */ }
+}
+function feedAction(btn, path, body) {
+  return busy(btn, async () => {
+    setStatus($("feed-status-msg"), "");
+    try { renderFeed(await api(path, body || {})); }
+    catch (e) { setStatus($("feed-status-msg"), e.message, "err"); }
+  });
+}
+$("feed-start").addEventListener("click", () => {
+  localStorage.setItem("7s.dest", $("feed-dest").value.trim());
+  localStorage.setItem("7s.min", $("feed-min").value.trim());
+  feedAction($("feed-start"), "/api/feed/start",
+             { dest: $("feed-dest").value, minutes: $("feed-min").value });
+});
+$("feed-send").addEventListener("click", () =>
+  feedAction($("feed-send"), "/api/feed/send", { dest: $("feed-dest").value, n: 1 }));
+$("feed-pause").addEventListener("click", () => {
+  const resume = $("feed-pause").textContent === "Återuppta";
+  feedAction($("feed-pause"), resume ? "/api/feed/resume" : "/api/feed/pause");
+});
+$("feed-stop").addEventListener("click", () => feedAction($("feed-stop"), "/api/feed/stop"));
+$("feed-reset").addEventListener("click", () => {
+  const now = Date.now();
+  if (now - confirmReset > 3000) {                 /* tvåstegsbekräftelse, ingen modal */
+    confirmReset = now;
+    setStatus($("feed-status-msg"), "Tömmer målmappen på rapporter — klicka igen inom 3 s för att bekräfta.");
+    setTimeout(() => { if (Date.now() - confirmReset >= 3000) setStatus($("feed-status-msg"), ""); }, 3200);
+    return;
+  }
+  confirmReset = 0;
+  feedAction($("feed-reset"), "/api/feed/reset");
+});
+[$("feed-dest"), $("feed-min")].forEach(el =>
+  el.addEventListener("keydown", e => { if (e.key === "Enter") $("feed-start").click(); }));
+
+/* ---------- init ---------- */
+$("korpus-path").value = localStorage.getItem("7s.korpus") || "";
+$("feed-dest").value = localStorage.getItem("7s.dest") || "";
+$("feed-min").value = localStorage.getItem("7s.min") || "15";
+showTab(localStorage.getItem("7s.tab") || "korpus");
+refreshState();
+pollFeed();
+setInterval(pollFeed, 1000);
+setInterval(refreshState, 5000);
+</script>
+</body>
+</html>
