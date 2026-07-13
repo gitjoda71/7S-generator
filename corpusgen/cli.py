@@ -4,6 +4,7 @@
   add-hostiles    injicera en cell (spaning/sabotage/infiltration/terrorism)
   add-protesters  injicera en grupp (demonstranter/miljöaktivister/fredsaktivister)
   feed            mata ut en korpus till en målmapp över tid
+  score           poängsätt en detektors utpekningar mot korpusens facit
 """
 import argparse
 import re
@@ -97,6 +98,20 @@ def cmd_add_protesters(a):
     print(f"facit: {c.counts()}")
 
 
+def cmd_score(a):
+    from . import score
+    try:
+        c = Corpus.load(a.corpus)
+    except FileNotFoundError as e:
+        sys.exit(f"fel: {e}")
+    try:
+        passed = score.run(c, a.detections, json_out=a.json, min_f1=a.min_f1)
+    except ValueError as e:
+        sys.exit(f"fel: {e}")
+    if not passed:
+        sys.exit(1)
+
+
 def build_parser():
     p = argparse.ArgumentParser(
         prog="7s-generator", description=__doc__, formatter_class=_Fmt,
@@ -105,7 +120,8 @@ def build_parser():
                "  1. generate       bygg en normalkorpus\n"
                "  2. add-hostiles   lägg på en hotcell             (valfritt)\n"
                "  3. add-protesters lägg på godartat brus          (valfritt)\n"
-               "  4. feed           mata ut korpusen till en mapp  (valfritt)\n\n"
+               "  4. feed           mata ut korpusen till en mapp  (valfritt)\n"
+               "  5. score          mät en detektor mot facit      (valfritt)\n\n"
                "Kör `7s-generator <kommando> -h` för ett kommandos flaggor och ett exempel.")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -196,6 +212,24 @@ def build_parser():
     f.add_argument("--reset", action="store_true", help="engång: rensa levererade rapporter och avsluta")
     f.add_argument("--status", action="store_true", help="engång: skriv ut status och avsluta")
     f.set_defaults(func=cmd_feed)
+
+    s = sub.add_parser(
+        "score", help="poängsätt en detektor mot facit", formatter_class=_Fmt,
+        description="Jämför en detektors utpekningar med korpusens ground_truth.json och "
+                    "räkna precision/recall/F1 — totalt (icke-civil), per label och per "
+                    "subtyp, plus celltäckning (andel hotcellsmedlemmar med minst en träff). "
+                    "Detektionsfilen är en JSON-lista av {\"file\": \"TNR….md\", \"label\": "
+                    "\"hostile\"|\"protester\"} — eller bara filnamn (= hostile).",
+        epilog="Exempel:\n"
+               "  7s-generator score --corpus ./korpus_tierp --detections utpekningar.json\n"
+               "  7s-generator score --corpus ./korpus_tierp --detections d.json --min-f1 0.8  # CI-grind")
+    s.add_argument("--corpus", required=True, metavar="MAPP", help="korpuskatalog med ground_truth.json")
+    s.add_argument("--detections", required=True, metavar="FIL",
+                   help="detektorns utpekningar (JSON, se ovan)")
+    s.add_argument("--json", action="store_true", help="maskinläsbart JSON-resultat till stdout")
+    s.add_argument("--min-f1", type=float, metavar="X",
+                   help="CI-grind: avsluta med felkod om icke-civil-F1 < X")
+    s.set_defaults(func=cmd_score)
     return p
 
 

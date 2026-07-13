@@ -17,7 +17,7 @@ from . import generate, feed
 from .cli import build_parser
 
 _AUGMENT = ("add-hostiles", "add-protesters")
-_PARSED = ("generate", "add-hostiles", "add-protesters", "feed")
+_PARSED = ("generate", "add-hostiles", "add-protesters", "feed", "score")
 
 # Short banner shown at startup — keep it light for someone who uses this rarely.
 WELCOME = """
@@ -46,6 +46,8 @@ Kommandon (samma flaggor som `7s-generator <kmd> -h`):
                       --count = antal rapporter i klustret
   feed --dest MAPP [--corpus MAPP] [--auto MIN | --send N | --status | --reset]
                       mata ut rapporter till valfri mapp; --auto kör i bakgrunden
+  score --detections FIL [--corpus MAPP] [--json] [--min-f1 X]
+                      poängsätt en detektors utpekningar mot korpusens facit
 
 Session:
   use MAPP            sätt aktiv korpus (används när --corpus utelämnas)
@@ -110,6 +112,19 @@ class Shell:
             n = generate.add_protesters(c, a.type, a.count, a.seed)
             print(f"  injicerade en {a.type}-grupp på {n} i {c.path}")
         print(f"  facit: {c.counts()}")
+
+    def _do_score(self, a):
+        try:
+            c = Corpus.load(a.corpus)
+        except FileNotFoundError as e:
+            print(f"  ? {e}")
+            return
+        from . import score
+        try:
+            score.run(c, a.detections, json_out=a.json, min_f1=a.min_f1,
+                      out=lambda s: print("  " + s.replace("\n", "\n  ")))
+        except ValueError as e:
+            print(f"  ? {e}")
 
     def _do_feed(self, a):
         if self.feeder and self.feeder.is_running():
@@ -200,8 +215,8 @@ class Shell:
             return True
 
         if cmd in _PARSED:
-            # default omitted --corpus to the active corpus for augment/feed
-            if cmd in _AUGMENT + ("feed",) and "--corpus" not in tokens:
+            # default omitted --corpus to the active corpus for augment/feed/score
+            if cmd in _AUGMENT + ("feed", "score") and "--corpus" not in tokens:
                 if self.current:
                     tokens += ["--corpus", str(self.current)]
                 else:
@@ -214,6 +229,8 @@ class Shell:
                 self._do_generate(args)
             elif cmd in _AUGMENT:
                 self._do_augment(cmd, args)
+            elif cmd == "score":
+                self._do_score(args)
             else:
                 self._do_feed(args)
             return True

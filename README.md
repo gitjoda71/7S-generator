@@ -72,7 +72,7 @@ bakgrundsflöde), `help`, `quit`.
 
 ## Kommandon
 
-De fyra kommandona nedan fungerar både i skalet och som **engångskommandon** för
+De fem kommandona nedan fungerar både i skalet och som **engångskommandon** för
 skript/CI.
 
 ### 1. `generate` — normal aktivitet
@@ -132,6 +132,18 @@ härmar en central app som droppar ut meddelanden över tid. Interaktivt som sta
 `quit`); kopierar refererade bilagor så att bildinbäddningar fungerar. Engångsflaggor
 för skript/CI: `--send N` · `--auto MINS` · `--reset` · `--status`. Med `--auto` (i
 skalet eller feed-läget) körs flödet i bakgrunden och kan pausas från prompten.
+
+### 5. `score` — poängsätt en detektor mot facit
+```bash
+python3 -m corpusgen score --corpus ./corpus_tierp --detections utpekningar.json
+```
+Jämför en detektors utpekningar med `ground_truth.json` och räknar
+precision/recall/F1 — totalt (*icke-civil*, label-agnostiskt), per label och per
+subtyp — plus **celltäckning** (andel hotcellsmedlemmar med minst en korrekt
+flaggad rapport). Detektionsfilen är en JSON-lista av
+`{"file": "TNR….md", "label": "hostile"|"protester"}`, eller bara filnamn
+(tolkas som `hostile`). `--json` ger maskinläsbart resultat och `--min-f1 X`
+gör kommandot till en CI-grind (felkod om icke-civil-F1 < X).
 
 ## Utdata
 
