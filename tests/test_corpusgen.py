@@ -88,6 +88,21 @@ class TestPolygonGeneration(unittest.TestCase):
                 self.assertTrue(point_in_polygon(loc["lat"], loc["lon"], poly),
                                 f"{loc['name']} @ {loc['lat']},{loc['lon']} utanför polygonen")
 
+    def test_thin_polygon_never_places_on_outside_vertex(self):
+        from corpusgen.coords import point_in_polygon
+        # a ~11 m wide, ~20 km diagonal strip: bbox rejection almost never lands
+        # inside, so the sampler must fall back to a guaranteed-interior point,
+        # never to polygon[0] (a vertex that reads as OUTSIDE)
+        thin = [[60.30, 17.40], [60.3001, 17.40], [60.40, 17.60], [60.4001, 17.60]]
+        with tempfile.TemporaryDirectory() as d:
+            c = generate.build_normal(out=d, lat=60.35, lon=17.50, radius=3, area="rural",
+                                      start=datetime(2026, 6, 15), days=5, callsigns=CS,
+                                      seed=2026, reports=20, polygon=thin)
+            v0 = thin[0]
+            on_vertex = sum(1 for l in c.meta["locations"]
+                            if abs(l["lat"] - v0[0]) < 1e-9 and abs(l["lon"] - v0[1]) < 1e-9)
+            self.assertEqual(on_vertex, 0, "platser staplade på ett hörn utanför polygonen")
+
     def test_polygon_is_deterministic(self):
         poly = [[60.30, 17.37], [60.30, 17.47], [60.40, 17.47], [60.40, 17.37]]
         with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:

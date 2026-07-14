@@ -156,6 +156,13 @@ class TestGuiApi(unittest.TestCase):
                 "polygon": [[60.3, 17.4], [60.4, 17.5]]}   # only 2 vertices
         self.assertEqual(self._req("POST", "/api/generate", body)[0], 400)
 
+    def test_rejects_too_many_callsigns(self):
+        many = ",".join(f"C{i}" for i in range(100))
+        body = {"aoi": "60.3,17.4", "area": "rural", "callsigns": many, "seed": "1"}
+        status, err = self._req("POST", "/api/preview-locations", body)
+        self.assertEqual(status, 400)
+        self.assertIn("anropssignaler", err["error"])
+
     def test_capabilities(self):
         status, cap = self._req("GET", "/api/capabilities")
         self.assertEqual(status, 200)

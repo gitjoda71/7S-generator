@@ -170,10 +170,7 @@ class GuiState:
         if area not in AREAS:
             raise ApiError(400, f"okänd områdestyp: {area}")
         radius = _number(body.get("radius"), "radie", 0.1, 100, default=3.0)
-        callsigns = [c.strip().upper() for c in
-                     str(body.get("callsigns") or "AQ,BQ,CQ,DQ").split(",") if c.strip()]
-        if not callsigns:
-            raise ApiError(400, "minst en anropssignal krävs")
+        callsigns = _callsigns(body.get("callsigns"))
         polygon = _parse_polygon(body.get("polygon"))
         seed = _number(body.get("seed"), "seed", -2**31, 2**31, cast=int, default=2026)
         locs = generate.build_locations(lat, lon, radius, area, callsigns,
@@ -307,6 +304,17 @@ def _parse_polygon(raw):
     return poly
 
 
+def _callsigns(v):
+    """Comma-separated callsigns, capped so a huge list can't tie up a request
+    thread (each callsign places `per` locations)."""
+    cs = [c.strip().upper() for c in str(v or "AQ,BQ,CQ,DQ").split(",") if c.strip()]
+    if not cs:
+        raise ApiError(400, "minst en anropssignal krävs")
+    if len(cs) > 64:
+        raise ApiError(400, "för många anropssignaler (max 64)")
+    return cs
+
+
 def _number(v, name, lo, hi, cast=float, default=None):
     if v in (None, ""):
         if default is None:
@@ -342,10 +350,7 @@ def _gen_params(body, for_preview=False):
     except ValueError:
         raise ApiError(400, f"ogiltigt startdatum (ÅÅÅÅ-MM-DD): {raw_from!r}")
     days = _number(body.get("days"), "dagar", 1, 365, cast=int, default=14)
-    callsigns = [c.strip().upper() for c in str(body.get("callsigns") or "AQ,BQ,CQ,DQ").split(",")
-                 if c.strip()]
-    if not callsigns:
-        raise ApiError(400, "minst en anropssignal krävs")
+    callsigns = _callsigns(body.get("callsigns"))
     reports = body.get("reports")
     reports = None if reports in (None, "") else _number(reports, "antal rapporter", 1, 100000, cast=int)
     images = bool(body.get("images"))

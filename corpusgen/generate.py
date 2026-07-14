@@ -25,10 +25,33 @@ def season_of(month):
     return "sommar"
 
 
-def _sample_in_polygon(polygon, bounds, lat, lon, rng, wedge, tries=200):
+def _interior_point(polygon):
+    """A point guaranteed to lie inside a simple polygon: the centroid if it is
+    inside (true for any convex area), else the midpoint of the interior span of
+    a horizontal ray at the centroid's latitude (handles concave areas)."""
+    from .coords import point_in_polygon
+    clat = sum(p[0] for p in polygon) / len(polygon)
+    clon = sum(p[1] for p in polygon) / len(polygon)
+    if point_in_polygon(clat, clon, polygon):
+        return clat, clon
+    xs = []                                        # ray crossings at y = clat
+    n = len(polygon)
+    for i in range(n):
+        y1, x1 = polygon[i]
+        y2, x2 = polygon[(i + 1) % n]
+        if (y1 > clat) != (y2 > clat):
+            xs.append(x1 + (clat - y1) / (y2 - y1) * (x2 - x1))
+    xs.sort()
+    if len(xs) >= 2:
+        return clat, (xs[0] + xs[1]) / 2           # midpoint of the first inside span
+    return polygon[0][0], polygon[0][1]            # truly degenerate: a vertex
+
+
+def _sample_in_polygon(polygon, bounds, lat, lon, rng, wedge, tries=400):
     """A random point inside `polygon`, preferring one whose bearing from the AOI
     centre falls in `wedge` (lo, hi). Falls back to any in-polygon point if the
-    wedge doesn't overlap the polygon (so a lop-sided area never stalls)."""
+    wedge doesn't overlap; and to a guaranteed-interior point if the area is so
+    thin that bbox rejection never lands inside (never a vertex on the outside)."""
     from .coords import point_in_polygon
     lo, hi = wedge
     minlat, maxlat, minlon, maxlon = bounds
@@ -43,9 +66,7 @@ def _sample_in_polygon(polygon, bounds, lat, lon, rng, wedge, tries=200):
         b = geo.bearing_deg(lat, lon, plat, plon)
         if lo <= b < hi:
             return plat, plon
-    if fallback is not None:
-        return fallback
-    return polygon[0][0], polygon[0][1]          # degenerate polygon: a vertex
+    return fallback if fallback is not None else _interior_point(polygon)
 
 
 def build_locations(lat, lon, radius, area, callsigns, rng, per=4, polygon=None):

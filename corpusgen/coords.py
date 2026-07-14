@@ -92,14 +92,18 @@ def mgrs_to_latlon(text):
     n_mod = n_base + n_in + (scale / 2 if half else 50000)
 
     # resolve the 2 000 000 m row-letter ambiguity from the latitude band:
-    # the true northing is >= the band's southern edge (small slack for the
-    # approximation), congruent to n_mod modulo 2 000 000.
+    # pick the northing congruent to n_mod (mod 2 000 000) whose *cell* reaches
+    # the band's southern edge. n_mod is the cell CENTRE, so allow half a cell
+    # of slack (50 km for a grid-only ref, less for finer digits) plus a little
+    # for the flat-earth band_min approximation — otherwise a coarse cell just
+    # north of a band floor is wrongly bumped a full 2 000 000 m (~18°) north.
     band_lat = -80 + _BANDS.index(band) * 8
     lon0 = (zone - 1) * 6 - 180 + 3
     band_min = _latlon_to_utm(band_lat, lon0)[2]
+    cell_half = 50000 if not half else scale / 2
     northern = _BANDS.index(band) >= _BANDS.index("N")
     northing = n_mod
-    while northing < band_min - 5000:
+    while northing < band_min - cell_half - 5000:
         northing += 2000000
     lat, lon = _utm_to_latlon(zone, easting, northing, northern=northern)
     return round(lat, 6), round(lon, 6)

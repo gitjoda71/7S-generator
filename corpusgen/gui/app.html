@@ -507,6 +507,7 @@ $("g-defaults").addEventListener("click", () => {
   ["g-aoi", "g-name", "g-reports", "g-out"].forEach(id => $(id).value = "");
   $("g-from").value = today();
   $("g-images").checked = $("g-obsidian").checked = false;
+  MAP.clearPolygon();
   genPersist(); schedulePreview(); MAP.parseAoiField(); $("g-aoi").focus();
 });
 
@@ -648,9 +649,12 @@ const MAP = (function () {
 
   /* --- rendering --- */
   function niceStep(span) {
+    // the tightest step giving <= ~9 lines across the view (iterate large->small
+    // and keep the last match; returning the FIRST match always gave 30° = no grid)
     const steps = [30, 10, 5, 2, 1, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001];
-    for (const s of steps) if (span / s <= 9) return s;
-    return 0.001;
+    let best = steps[steps.length - 1];
+    for (const s of steps) if (span / s <= 9) best = s;
+    return best;
   }
   function drawGraticule() {
     ctx.fillStyle = cssVar("--bg"); ctx.fillRect(0, 0, cw, ch);
@@ -863,19 +867,21 @@ const MAP = (function () {
     st.polygon.push([+ll.lat.toFixed(6), +ll.lon.toFixed(6)]);
     st.drawing = true; render();
   }
+  function persistPolygon() {                      // survive a page reload like the rest of the form
+    const json = st.polygon.length >= 3 ? JSON.stringify(st.polygon) : "";
+    $("g-polygon").value = json;
+    $("map-clear-poly").disabled = !json;
+    localStorage.setItem("7s.polygon", json);
+  }
   function finishPolygon() {
     st.drawing = false;
-    if (st.polygon.length >= 3) {
-      $("g-polygon").value = JSON.stringify(st.polygon);
-      $("map-clear-poly").disabled = false;
-      onAreaShapeChanged();
-    } else { clearPolygon(); }
+    if (st.polygon.length >= 3) { persistPolygon(); onAreaShapeChanged(); }
+    else { clearPolygon(); }
     render();
   }
   function clearPolygon() {
     st.polygon = []; st.drawing = false;
-    $("g-polygon").value = ""; $("map-clear-poly").disabled = true;
-    onAreaShapeChanged(); render();
+    persistPolygon(); onAreaShapeChanged(); render();
   }
 
   /* --- sync with the form --- */
@@ -939,8 +945,19 @@ const MAP = (function () {
       polygon: "Klicka för att lägga hörn · klicka första hörnet (eller dubbelklick) för att stänga · Esc rensar",
     }[m];
   }
+  function restorePolygon() {
+    try {
+      const p = JSON.parse(localStorage.getItem("7s.polygon") || "null");
+      if (Array.isArray(p) && p.length >= 3) {
+        st.polygon = p;
+        $("g-polygon").value = JSON.stringify(p);
+        $("map-clear-poly").disabled = false;
+      }
+    } catch (e) { /* strunt-värde */ }
+  }
   function init() {
     cv = $("map-canvas"); ctx = cv.getContext("2d"); ready = true;
+    restorePolygon();
     cv.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -957,7 +974,7 @@ const MAP = (function () {
     resize();
   }
   return { init, resize, parseAoiField, setRadiusFromField, getPolygon, refreshLocations,
-           setMode };
+           setMode, clearPolygon };
 })();
 
 /* ---------- init ---------- */

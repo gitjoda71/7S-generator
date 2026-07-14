@@ -37,6 +37,21 @@ class TestMgrsInverse(unittest.TestCase):
             with self.assertRaises(ValueError, msg=bad):
                 coords.mgrs_to_latlon(bad)
 
+    def test_coarse_cells_at_band_floor(self):
+        # regression: coarse (grid-only) cells on a latitude-band floor were
+        # bumped a full 2 000 000 m north (~18°). All band-W cells over Sweden
+        # (floor 64°N) must resolve to ~63.5°N, not ~81.5°N.
+        for m in ("32WNR", "33WVL", "33WWL", "34WER"):
+            lat, lon = coords.mgrs_to_latlon(m)
+            self.assertTrue(62 < lat < 66, f"{m} -> {lat}")
+
+    def test_coarse_grid_only_stays_in_its_cell(self):
+        for lat, lon in POINTS:
+            grid = latlon_to_mgrs(lat, lon, digits=5)[:5]      # 100 km cell
+            glat, glon = coords.mgrs_to_latlon(grid)
+            self.assertLess(dist_km(lat, lon, glat, glon), 71,  # 100 km half-diagonal
+                            f"{lat},{lon} via {grid}")
+
 
 class TestParsePoint(unittest.TestCase):
     def test_dispatch(self):

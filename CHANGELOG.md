@@ -3,6 +3,26 @@
 Forkad 2026-07-13 från larsnor/7S-generator v0.2.1
 (origin = gitjoda71/7S-generator, upstream = larsnor/7S-generator).
 
+## 0.8.1 — 2026-07-14
+
+Åtgärdar fem fynd från en adversarial granskning av 0.7.0–0.8.0 (alla
+reproducerade med körd kod):
+
+- **MGRS-invers (allvarlig):** grova rutreferenser (grid-only / 2 siffror) på en
+  latitudbands-golv-rad gav ~1940 km fel latitud — hela 64°N-raden över norra
+  Sverige (`33WWL` → 81°N i stället för 63,6°N), och band X kunde ge longitud
+  utanför intervallet och krascha. Radbokstavs-slacken är nu cellstorleksberoende;
+  20 000 round-trips (fulla + grova) felfria.
+- **Offline-rutnät:** kartans `niceStep` returnerade alltid 30° → grundkartan
+  (air-gapped-läget) ritade inga rutnätslinjer. Ger nu 4–9 linjer per vy.
+- **Tunn polygon:** en extremt avlång polygon uttömde rejection-samplern och
+  staplade platser på ett hörn som ligger *utanför* polygonen. Faller nu tillbaka
+  på en garanterat inre punkt (centroid/kant-scan), aldrig ett ytterhörn.
+- **Anropssignaler cappas** (≤64) i GUI-endpoints — en enorm lista blockerade
+  annars request-tråden i sekunder (själv-DoS på localhost).
+- **Ritad polygon persisteras** nu över omladdning (localStorage), som övriga
+  fält, och rensas av "Återställ standard".
+
 ## 0.8.0 — 2026-07-14
 
 - **Interaktiv karta** i GUI:ts Generera-flik (canvas, Web Mercator, endast
