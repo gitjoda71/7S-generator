@@ -78,12 +78,33 @@ standardbiblioteket, lyssnar bara på 127.0.0.1 och gör inga nätverksanrop
 
 - **Generera** — formulär med smarta defaults och **live-förhandsvisning**:
   samma seed ⇒ förhandsvisningen är exakt de första rapporterna ur skarp
-  körning. Skyddar mot oavsiktlig överskrivning av befintliga mappar.
+  körning. Skyddar mot oavsiktlig överskrivning av befintliga mappar. Här finns
+  också den **interaktiva kartan** (se nedan).
 - **Korpus** — välj aktiv korpus och se facit-räknarna.
 - **Mata ut** — starta/pausa/återuppta/stoppa en matning med progressbar och
   leveranslogg (samma bakgrundsmatning som skalet).
 
 `--port N` byter port, `--no-browser` låter bli att öppna webbläsaren.
+
+### Interaktiv karta
+
+Generera-fliken har en canvas-karta (endast standardbibliotek, ritas i
+webbläsaren) för att sätta upp området visuellt:
+
+- **Sätt centrum** — klicka på kartan för att placera AOI:n; AOI-fältet fylls i.
+- **Radie** — dra i ringhandtaget på cirkelns östkant (eller skriv i radie-fältet).
+- **Rita polygon** — klicka ut hörnen på det område där rapporter ska genereras;
+  klicka första hörnet igen (eller dubbelklicka) för att stänga. Anges en polygon
+  sprids platserna inuti den i stället för i radie-cirkeln.
+- **Panorera/zooma** och en live-förhandsvisning av var platserna hamnar (prickar
+  färgade per sektor) med sektorstrålar från AOI:n.
+- **Bakgrundskarta (internet)** är en **opt-in**-kryssruta som låter webbläsaren
+  hämta OpenStreetMap-rutor. Servern (Python) gör aldrig något nätverksanrop —
+  utan kryssrutan är allt helt offline (rutnät + skalstock som referens).
+
+**Koordinatformat:** AOI-fältet och `--aoi` tar decimalgrader (`60.345,17.422`),
+**MGRS** (`33V XF 66651 79308`), **DMS/DM** (`59°15'41"N 17°42'49"E`, svenskt
+Ö/O = öst) och **SWEREF 99 TM** (`6577564,674032`).
 
 ## Kommandon
 

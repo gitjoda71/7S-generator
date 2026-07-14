@@ -3,6 +3,18 @@
 Forkad 2026-07-13 från larsnor/7S-generator v0.2.1
 (origin = gitjoda71/7S-generator, upstream = larsnor/7S-generator).
 
+## 0.8.0 — 2026-07-14
+
+- **Interaktiv karta** i GUI:ts Generera-flik (canvas, Web Mercator, endast
+  stdlib): sätt AOI-centrum genom att klicka, dra radie-handtaget, panorera/zooma,
+  och **rita en polygon** för genereringsområdet (klicka hörn, stäng vid första).
+  Live-förhandsvisning av var platserna hamnar (prickar per sektor + sektorstrålar)
+  via `/api/preview-locations`. Rutnät + skalstock ger referens offline; en
+  **opt-in** kryssruta låter webbläsaren (inte servern) hämta OpenStreetMap-rutor.
+  CSP:n tillåter tile-värden men Python-servern gör aldrig nätverksanrop.
+- Verifierad med en CDP-driven headless-browsertest (canvas ritar, AOI-input
+  ritar om, polygon-ritning skriver hörnen, rensa nollställer).
+
 ## 0.7.0 — 2026-07-14
 
 - Koordinatinmatning i flera format (ny `corpusgen/coords.py`, endast stdlib):

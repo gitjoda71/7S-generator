@@ -403,10 +403,14 @@ def make_handler(state):
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Cache-Control", "no-store")
+            # img-src also allows the OSM tile host: the *browser* fetches tiles
+            # only when the user opts into the background map — the Python server
+            # itself never makes a network request, so the tool stays air-gapped.
             self.send_header("Content-Security-Policy",
                              "default-src 'none'; style-src 'unsafe-inline'; "
                              "script-src 'unsafe-inline'; connect-src 'self'; "
-                             "img-src 'self' data:; base-uri 'none'; form-action 'none'")
+                             "img-src 'self' data: https://tile.openstreetmap.org; "
+                             "base-uri 'none'; form-action 'none'")
             self.end_headers()
             self.wfile.write(data)
 
