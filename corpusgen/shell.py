@@ -114,16 +114,12 @@ class Shell:
         print(f"  facit: {c.counts()}")
 
     def _do_score(self, a):
-        try:
-            c = Corpus.load(a.corpus)
-        except FileNotFoundError as e:
-            print(f"  ? {e}")
-            return
         from . import score
         try:
+            c = Corpus.load(a.corpus)
             score.run(c, a.detections, json_out=a.json, min_f1=a.min_f1,
                       out=lambda s: print("  " + s.replace("\n", "\n  ")))
-        except ValueError as e:
+        except Exception as e:                       # noqa: BLE001 - surface, don't kill the shell
             print(f"  ? {e}")
 
     @staticmethod
@@ -223,7 +219,9 @@ class Shell:
 
         if cmd in _PARSED:
             # default omitted --corpus to the active corpus for augment/feed/score
-            if cmd in _AUGMENT + ("feed", "score") and "--corpus" not in tokens:
+            # (recognise the --corpus=PATH form too, or we'd silently override it)
+            has_corpus = any(t == "--corpus" or t.startswith("--corpus=") for t in tokens)
+            if cmd in _AUGMENT + ("feed", "score") and not has_corpus:
                 if self.current:
                     tokens += ["--corpus", str(self.current)]
                 else:

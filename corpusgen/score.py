@@ -120,7 +120,10 @@ def score(ground_truth, dets):
     for k, r in truth.items():
         if r["truth"] != "hostile" or not r.get("member"):
             continue
-        m = members.setdefault(r["member"], {"detected": 0, "total": 0})
+        # key on subtype/member: separate cells reuse the member names H1, H2, …
+        # (two same-subtype cells still collide — a generator format limitation)
+        m = members.setdefault(f"{r['subtype'] or '-'}/{r['member']}",
+                               {"detected": 0, "total": 0})
         m["total"] += 1
         m["detected"] += flagged.get(k) == "hostile"
     coverage = {"detected": sum(1 for m in members.values() if m["detected"]),
@@ -181,6 +184,10 @@ def run(corpus, detections_path, json_out=False, min_f1=None, out=print):
     res["detections"]["duplicates"] = duplicates
     res["corpus"] = str(corpus.path)
     gate_val = _gate_value(res["classes"]["icke-civil"])
+    # no vacuous pass: a detections file that matched nothing in the corpus
+    # (wrong corpus? wrong filenames?) must not sail through the gate
+    if dets and len(res["detections"]["unknown_files"]) == len(dets):
+        gate_val = 0.0
     passed = True
     if min_f1 is not None:
         passed = gate_val >= min_f1

@@ -106,28 +106,31 @@ class Feeder:
         return not self._stop.is_set()
 
     def _auto_loop(self, minutes):
-        with self._lock:
-            remaining = self.reports[self.idx:]
-        if not remaining:
-            self._sink("\n  (alla rapporter redan levererade)")
-            return
-        t0, t1 = remaining[0][0], self.reports[-1][0]
-        span = (t1 - t0).total_seconds() or 1.0
-        factor = span / (minutes * 60.0)
-        self._sink(f"\n  Matar {len(remaining)} rapporter över ~{minutes:g} min "
-                   f"(≈{factor:.0f}× realtid).")
-        prev = t0
-        for ts, p in remaining:
-            wait = min(max(0.0, (ts - prev).total_seconds() / factor), minutes * 60.0)
-            if not self._interruptible_wait(wait):
-                self._sink("\n  (matning stoppad)")
-                return
+        try:
             with self._lock:
-                self._copy(p)
-                self.idx += 1
-            self._sink(f"\n  + {p.name}   [{ts:%a %H:%M}]")
-            prev = ts
-        self._sink("\n  (matning klar)")
+                remaining = self.reports[self.idx:]
+            if not remaining:
+                self._sink("\n  (alla rapporter redan levererade)")
+                return
+            t0, t1 = remaining[0][0], self.reports[-1][0]
+            span = (t1 - t0).total_seconds() or 1.0
+            factor = span / (minutes * 60.0)
+            self._sink(f"\n  Matar {len(remaining)} rapporter över ~{minutes:g} min "
+                       f"(≈{factor:.0f}× realtid).")
+            prev = t0
+            for ts, p in remaining:
+                wait = min(max(0.0, (ts - prev).total_seconds() / factor), minutes * 60.0)
+                if not self._interruptible_wait(wait):
+                    self._sink("\n  (matning stoppad)")
+                    return
+                with self._lock:
+                    self._copy(p)
+                    self.idx += 1
+                self._sink(f"\n  + {p.name}   [{ts:%a %H:%M}]")
+                prev = ts
+            self._sink("\n  (matning klar)")
+        except Exception as e:                       # noqa: BLE001 - a dying thread must
+            self._sink(f"\n  fel: {e} — matningen avbruten")  # not be silent to the sink
 
     def pause(self):
         self._paused.set()

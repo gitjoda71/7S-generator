@@ -70,6 +70,21 @@ i engångsläget nedan; kör `<kommando> -h` i skalet för detaljer. Sessionskom
 `use <mapp>` (sätt aktiv korpus), `status`, `pause` · `resume` · `stop` (styr ett
 bakgrundsflöde), `help`, `quit`.
 
+## Grafiskt gränssnitt (GUI)
+
+Kör `7s-generator gui` för att öppna en lokal webb-GUI i webbläsaren — endast
+standardbiblioteket, lyssnar bara på 127.0.0.1 och gör inga nätverksanrop
+(fungerar air-gapped). Flikar:
+
+- **Generera** — formulär med smarta defaults och **live-förhandsvisning**:
+  samma seed ⇒ förhandsvisningen är exakt de första rapporterna ur skarp
+  körning. Skyddar mot oavsiktlig överskrivning av befintliga mappar.
+- **Korpus** — välj aktiv korpus och se facit-räknarna.
+- **Mata ut** — starta/pausa/återuppta/stoppa en matning med progressbar och
+  leveranslogg (samma bakgrundsmatning som skalet).
+
+`--port N` byter port, `--no-browser` låter bli att öppna webbläsaren.
+
 ## Kommandon
 
 De fem kommandona nedan fungerar både i skalet och som **engångskommandon** för

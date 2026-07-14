@@ -37,9 +37,9 @@
   section[hidden] { display: none; }
 
   label { display: block; font-size: .82rem; color: var(--muted); margin-bottom: .15rem; }
-  input[type=text] { width: 100%; padding: .5rem .6rem; font: inherit; color: var(--text);
-    background: var(--bg); border: 1px solid var(--line); border-radius: 7px; }
-  input:focus-visible { outline: 2px solid var(--accent); border-color: var(--accent); }
+  input[type=text], input[type=date], select { width: 100%; padding: .5rem .6rem; font: inherit;
+    color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 7px; }
+  input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); border-color: var(--accent); }
   .row { display: flex; gap: .8rem; align-items: end; flex-wrap: wrap; margin-bottom: .9rem; }
   .row > div { flex: 1; min-width: 130px; }
   .row > div.narrow { flex: 0 0 8.5rem; }
@@ -96,8 +96,70 @@
 
   <!-- ============ GENERERA ============ -->
   <section role="tabpanel" id="panel-gen" hidden>
-    <p class="empty">Generera-formuläret kommer i nästa version — kör tills vidare
-    <code>7s-generator generate …</code> i terminalen och välj korpusen under <b>Korpus</b>.</p>
+    <div class="row">
+      <div>
+        <label for="g-aoi">AOI — LAT, LON (objektet som skyddas)</label>
+        <input type="text" id="g-aoi" placeholder="60.345, 17.422" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="narrow">
+        <label for="g-radius">Radie, km</label>
+        <input type="text" id="g-radius" value="3" inputmode="decimal" autocomplete="off">
+      </div>
+      <div class="narrow">
+        <label for="g-area">Områdestyp</label>
+        <select id="g-area">
+          <option>airport</option><option>coastal</option><option>forest</option>
+          <option>military</option><option>port</option><option selected>rural</option>
+          <option>suburban</option><option>urban</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="narrow">
+        <label for="g-from">Från och med</label>
+        <input type="date" id="g-from">
+      </div>
+      <div class="narrow">
+        <label for="g-days">Dagar</label>
+        <input type="text" id="g-days" value="14" inputmode="numeric" autocomplete="off">
+      </div>
+      <div>
+        <label for="g-callsigns">Anropssignaler (en sektor var)</label>
+        <input type="text" id="g-callsigns" value="AQ,BQ,CQ,DQ" autocomplete="off" spellcheck="false">
+      </div>
+      <div>
+        <label for="g-name">AOI-namn (används i hottext)</label>
+        <input type="text" id="g-name" placeholder="objektet" autocomplete="off">
+      </div>
+    </div>
+    <div class="row">
+      <div class="narrow">
+        <label for="g-seed">Seed (samma seed ⇒ samma korpus)</label>
+        <input type="text" id="g-seed" value="2026" inputmode="numeric" autocomplete="off">
+      </div>
+      <div class="narrow">
+        <label for="g-reports">Antal rapporter</label>
+        <input type="text" id="g-reports" placeholder="auto" inputmode="numeric" autocomplete="off">
+      </div>
+      <div>
+        <label for="g-out">Utmapp (skapas vid behov)</label>
+        <input type="text" id="g-out" placeholder="t.ex. C:\korpusar\korpus_tierp"
+               autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+    <div class="row" style="align-items:center">
+      <div style="flex:0 0 auto"><label style="display:inline"><input type="checkbox" id="g-images"> skyltfoton</label>
+        <span class="sub" id="g-images-note" style="font-size:.78rem;color:var(--muted)"></span></div>
+      <div style="flex:0 0 auto"><label style="display:inline"><input type="checkbox" id="g-obsidian"> Obsidian-format (exakt appformat)</label></div>
+      <div style="flex:1"></div>
+      <div style="flex:0 0 auto"><button id="g-defaults">Återställ standard</button></div>
+      <div style="flex:0 0 auto"><button class="primary" id="g-run">Generera korpus</button></div>
+    </div>
+    <div class="status" id="g-status" role="alert"></div>
+    <label>Förhandsvisning — exakt de första rapporterna ur skarp körning (samma seed)</label>
+    <div class="progress-line" style="margin:.15rem 0 .4rem"><span id="g-estimate">–</span>
+      <button class="copy" id="g-copy" disabled>kopiera</button></div>
+    <pre class="log" id="g-preview" style="height:17rem">(fyll i AOI, datum m.m. så visas de första rapporterna här)</pre>
   </section>
 
   <!-- ============ KORPUS ============ -->
@@ -150,6 +212,12 @@
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g,
+  c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+/* lokalt datum som ÅÅÅÅ-MM-DD — toISOString() är UTC och ger gårdagen nattetid */
+const today = () => { const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+let actionPending = 0;   /* pågående knapp-åtgärder: pausa poll-rendering så länge */
 
 /* ---------- api ---------- */
 async function api(path, body) {
@@ -162,12 +230,13 @@ async function api(path, body) {
   return j;
 }
 
-/* busy(btn, fn): disabled direkt, spinner först efter 200 ms */
+/* busy(btn, fn): disabled direkt, spinner först efter 200 ms; pausar poll-rendering */
 async function busy(btn, fn) {
   btn.disabled = true;
+  actionPending++;
   const t = setTimeout(() => btn.classList.add("busy"), 200);
   try { return await fn(); }
-  finally { clearTimeout(t); btn.classList.remove("busy"); btn.disabled = false; }
+  finally { clearTimeout(t); btn.classList.remove("busy"); btn.disabled = false; actionPending--; }
 }
 
 function setStatus(el, msg, cls) {
@@ -180,7 +249,7 @@ const tabs = [...document.querySelectorAll("[role=tab]")];
 function showTab(name) {
   tabs.forEach(t => t.setAttribute("aria-selected", String(t.dataset.tab === name)));
   ["gen", "korpus", "feed"].forEach(n => $("panel-" + n).hidden = n !== name);
-  const focus = { korpus: "korpus-path", feed: "feed-dest" }[name];
+  const focus = { gen: "g-aoi", korpus: "korpus-path", feed: "feed-dest" }[name];
   if (focus) $(focus).focus();
   localStorage.setItem("7s.tab", name);
 }
@@ -202,14 +271,15 @@ function renderState(st) {
   const el = $("korpus-active");
   if (!st.active_corpus) {
     el.innerHTML = `<p class="empty"><b>Ingen aktiv korpus.</b> Klistra in sökvägen till en
-      korpusmapp nedan — eller generera en ny (terminalen tills vidare).</p>`;
+      korpusmapp nedan — eller skapa en ny under fliken Generera.</p>`;
   } else {
-    const counts = st.counts ? Object.entries(st.counts).sort().map(([k, v]) => badge(k, v)).join(" ") : "";
+    const counts = st.counts ? Object.entries(st.counts).sort()
+      .map(([k, v]) => badge(esc(k), esc(v))).join(" ") : "";
     el.innerHTML = `<div class="active-corpus">
-        <span>Aktiv korpus:</span> <code id="korpus-code">${st.active_corpus}</code>
+        <span>Aktiv korpus:</span> <code id="korpus-code">${esc(st.active_corpus)}</code>
         <button class="copy" id="korpus-copy" title="Kopiera sökvägen">kopiera</button>
         <span style="flex-basis:100%"></span>
-        ${st.reports != null ? `<span class="badge">${st.reports} rapporter</span>` : ""} ${counts}
+        ${st.reports != null ? `<span class="badge">${esc(st.reports)} rapporter</span>` : ""} ${counts}
       </div>`;
     $("korpus-copy").addEventListener("click", async () => {
       await navigator.clipboard.writeText(st.active_corpus);
@@ -218,7 +288,7 @@ function renderState(st) {
     });
   }
   $("feed-corpus-line").innerHTML = st.active_corpus
-    ? `Matar från: <code>${st.active_corpus}</code>`
+    ? `Matar från: <code>${esc(st.active_corpus)}</code>`
     : `<b>Ingen aktiv korpus</b> — välj en under fliken Korpus först.`;
 }
 async function refreshState() {
@@ -249,19 +319,33 @@ function renderFeed(fs) {
     $("feed-bar").max = fs.total || 1;
     $("feed-bar").value = fs.delivered || 0;
     $("feed-progress-text").textContent =
-      `${fs.delivered}/${fs.total} levererade` + (running ? (paused ? " · pausad" : " · matar") : "");
+      `${fs.delivered}/${fs.total} levererade` + (running ? (paused ? " · pausad" : " · matar") : "")
+      + (fs.dest ? ` · mål: ${fs.dest}` : "");
     $("feed-next").textContent = fs.next ? `nästa: ${fs.next.file} [${fs.next.ts}]` : "allt levererat ✓";
     const log = $("feed-log");
     const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
     log.textContent = (fs.log && fs.log.length) ? fs.log.join("\n") : "(tom logg)";
     if (atBottom) log.scrollTop = log.scrollHeight;
   } else {
+    $("feed-bar").value = 0;
     $("feed-progress-text").textContent = "–";
     $("feed-next").textContent = "";
   }
 }
+let pollFails = 0;
 async function pollFeed() {
-  try { renderFeed(await api("/api/feed/status")); } catch (e) { /* servern borta */ }
+  if (actionPending) return;               /* rör inte knappläget mitt i en åtgärd */
+  try {
+    const fs = await api("/api/feed/status");
+    if (pollFails >= 3) setStatus($("feed-status-msg"), "");   /* servern är tillbaka */
+    pollFails = 0;
+    renderFeed(fs);
+  } catch (e) {
+    if (++pollFails === 3) {               /* efter 3 missar: säg det och gå till säkert läge */
+      setStatus($("feed-status-msg"), "servern svarar inte — är den stoppad?", "err");
+      renderFeed({ exists: false });
+    }
+  }
 }
 function feedAction(btn, path, body) {
   return busy(btn, async () => {
@@ -287,17 +371,144 @@ $("feed-reset").addEventListener("click", () => {
   const now = Date.now();
   if (now - confirmReset > 3000) {                 /* tvåstegsbekräftelse, ingen modal */
     confirmReset = now;
-    setStatus($("feed-status-msg"), "Tömmer målmappen på rapporter — klicka igen inom 3 s för att bekräfta.");
+    setStatus($("feed-status-msg"), "ALLA .md-filer i målmappen raderas (även andras) — klicka igen inom 3 s för att bekräfta.");
     setTimeout(() => { if (Date.now() - confirmReset >= 3000) setStatus($("feed-status-msg"), ""); }, 3200);
     return;
   }
   confirmReset = 0;
   feedAction($("feed-reset"), "/api/feed/reset");
 });
+
 [$("feed-dest"), $("feed-min")].forEach(el =>
   el.addEventListener("keydown", e => { if (e.key === "Enter") $("feed-start").click(); }));
 
+/* ---------- generera ---------- */
+const G_FIELDS = ["g-aoi", "g-radius", "g-area", "g-from", "g-days", "g-callsigns",
+                  "g-name", "g-seed", "g-reports", "g-out"];
+const G_DEFAULTS = { "g-radius": "3", "g-area": "rural", "g-days": "14",
+                     "g-callsigns": "AQ,BQ,CQ,DQ", "g-seed": "2026" };
+function genBody() {
+  return { aoi: $("g-aoi").value, radius: $("g-radius").value, area: $("g-area").value,
+           from: $("g-from").value, days: $("g-days").value, callsigns: $("g-callsigns").value,
+           name: $("g-name").value, seed: $("g-seed").value, reports: $("g-reports").value,
+           out: $("g-out").value, images: $("g-images").checked, obsidian: $("g-obsidian").checked };
+}
+function genPersist() {
+  G_FIELDS.forEach(id => localStorage.setItem("7s." + id, $(id).value));
+  localStorage.setItem("7s.g-images", $("g-images").checked);
+  localStorage.setItem("7s.g-obsidian", $("g-obsidian").checked);
+}
+function genRestore() {
+  G_FIELDS.forEach(id => {
+    const v = localStorage.getItem("7s." + id);
+    if (v !== null && v !== "") $(id).value = v;
+  });
+  if (!$("g-from").value) $("g-from").value = today();
+  $("g-images").checked = localStorage.getItem("7s.g-images") === "true";
+  $("g-obsidian").checked = localStorage.getItem("7s.g-obsidian") === "true";
+}
+$("g-defaults").addEventListener("click", () => {
+  Object.entries(G_DEFAULTS).forEach(([id, v]) => $(id).value = v);
+  ["g-aoi", "g-name", "g-reports", "g-out"].forEach(id => $(id).value = "");
+  $("g-from").value = today();
+  $("g-images").checked = $("g-obsidian").checked = false;
+  genPersist(); schedulePreview(); $("g-aoi").focus();
+});
+
+/* live-förhandsvisning, debounce 500 ms */
+let previewTimer = null, previewSeq = 0;
+function schedulePreview() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(runPreview, 500);
+}
+function resetPreview() {                          /* aldrig en inaktuell preview kvar */
+  $("g-preview").textContent = "(fyll i AOI, datum m.m. så visas de första rapporterna här)";
+  $("g-estimate").textContent = "–";
+  $("g-copy").disabled = true;
+}
+async function runPreview() {
+  if (!$("g-aoi").value.trim() || !$("g-from").value) {
+    previewSeq++;                                  /* ogiltigförklara svar på väg in */
+    resetPreview();
+    return;
+  }
+  const seq = ++previewSeq;
+  try {
+    const pv = await api("/api/preview", genBody());
+    if (seq !== previewSeq) return;                /* ett nyare svar är på väg */
+    $("g-preview").textContent = pv.reports
+      .map(r => "── " + r.file + " " + "─".repeat(Math.max(0, 44 - r.file.length)) + "\n" + r.text)
+      .join("\n");
+    $("g-estimate").textContent =
+      `≈${pv.estimate} rapporter (årstid ${pv.season}, ${pv.locations} platser)`;
+    $("g-copy").disabled = false;
+    setStatus($("g-status"), "");
+  } catch (e) {
+    if (seq !== previewSeq) return;
+    resetPreview();
+    setStatus($("g-status"), e.message, "err");
+  }
+}
+G_FIELDS.forEach(id => {
+  $(id).addEventListener("input", () => { genPersist(); schedulePreview(); });
+  $(id).addEventListener("keydown", e => { if (e.key === "Enter") $("g-run").click(); });
+});
+["g-images", "g-obsidian"].forEach(id => $(id).addEventListener("change", genPersist));
+$("g-copy").addEventListener("click", async () => {
+  await navigator.clipboard.writeText($("g-preview").textContent);
+  $("g-copy").textContent = "kopierad ✓";
+  setTimeout(() => $("g-copy").textContent = "kopiera", 1500);
+});
+
+/* generera: jobb + polling; 409 = bekräfta överskrivning med andra klicket.
+   Bekräftelsen binds till hela parameteruppsättningen — ändras t.ex. utmappen
+   efter varningen gäller den inte längre (fel mapp får aldrig ärva ett ok). */
+let genConfirmKey = null;
+$("g-run").addEventListener("click", () => busy($("g-run"), async () => {
+  setStatus($("g-status"), "");
+  const body = genBody();
+  if (genConfirmKey !== null && genConfirmKey === JSON.stringify(body)) body.overwrite = true;
+  genConfirmKey = null;
+  try {
+    const { job } = await api("/api/generate", body);
+    setStatus($("g-status"), "genererar …");
+    for (;;) {
+      await new Promise(r => setTimeout(r, 400));
+      const j = await api("/api/jobs/" + job);
+      if (j.status === "running") continue;
+      if (j.status === "error") throw new Error(j.error);
+      const res = j.result;
+      setStatus($("g-status"),
+        `klart ✓ ${res.reports} rapporter till ${res.path} (årstid ${res.season}` +
+        (res.plates ? `, ${res.plates} skyltfoton` : "") + `) — nu aktiv korpus`, "ok");
+      refreshState();
+      return;
+    }
+  } catch (e) {
+    if (e.message.includes("bekräfta för att fortsätta")) {
+      genConfirmKey = JSON.stringify(body);
+      setTimeout(() => genConfirmKey = null, 5000);
+      setStatus($("g-status"), e.message + " — klicka på Generera igen inom 5 s.", "err");
+    } else {
+      setStatus($("g-status"), e.message, "err");
+    }
+  }
+}));
+
+/* Pillow-läge styr skyltfoto-kryssrutan */
+(async () => {
+  try {
+    const cap = await api("/api/capabilities");
+    if (!cap.images) {
+      $("g-images").disabled = true;
+      $("g-images-note").textContent = "(kräver Pillow — pip install \"7s-generator[images]\")";
+    }
+  } catch (e) { /* servern borta */ }
+})();
+
 /* ---------- init ---------- */
+genRestore();
+schedulePreview();
 $("korpus-path").value = localStorage.getItem("7s.korpus") || "";
 $("feed-dest").value = localStorage.getItem("7s.dest") || "";
 $("feed-min").value = localStorage.getItem("7s.min") || "15";

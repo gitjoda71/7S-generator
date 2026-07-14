@@ -108,11 +108,8 @@ def cmd_score(a):
     from . import score
     try:
         c = Corpus.load(a.corpus)
-    except FileNotFoundError as e:
-        sys.exit(f"fel: {e}")
-    try:
         passed = score.run(c, a.detections, json_out=a.json, min_f1=a.min_f1)
-    except ValueError as e:
+    except Exception as e:                # corrupt meta/gt/detections: message, not traceback
         sys.exit(f"fel: {e}")
     if not passed:
         sys.exit(1)

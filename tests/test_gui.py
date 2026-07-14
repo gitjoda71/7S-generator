@@ -91,6 +91,12 @@ class TestGuiApi(unittest.TestCase):
         self.assertEqual((status, fs["delivered"]), (200, 0))
         self.assertEqual(list(self.dest.glob("*.md")), [])
 
+        dest2 = Path(self._tmp.name) / "inkorg2"    # ändrad målmapp => ny feeder, inte den gamla
+        status, fs = self._req("POST", "/api/feed/send", {"dest": str(dest2), "n": 2})
+        self.assertEqual(status, 200)
+        self.assertEqual(len(list(dest2.glob("*.md"))), 2)
+        self.assertEqual(list(self.dest.glob("*.md")), [])
+
     def test_feed_control_without_feed_is_409(self):
         fresh = gui.GuiState()                       # isolerad state, ingen feeder
         with self.assertRaises(gui.ApiError) as cm:
@@ -108,6 +114,71 @@ class TestGuiApi(unittest.TestCase):
         from corpusgen.cli import build_parser
         a = build_parser().parse_args(["gui", "--port", "7710", "--no-browser"])
         self.assertEqual((a.port, a.no_browser), (7710, True))
+
+    def test_capabilities(self):
+        status, cap = self._req("GET", "/api/capabilities")
+        self.assertEqual(status, 200)
+        self.assertIsInstance(cap["images"], bool)
+
+    def _poll_job(self, jid, tries=100):
+        import time
+        for _ in range(tries):
+            status, j = self._req("GET", f"/api/jobs/{jid}")
+            self.assertEqual(status, 200)
+            if j["status"] != "running":
+                return j
+            time.sleep(0.1)
+        self.fail("jobbet blev aldrig klart")
+
+    def test_preview_is_exact_prefix_of_real_run(self):
+        body = {"aoi": "60.345, 17.422", "area": "airport", "from": "2026-06-15",
+                "days": "5", "callsigns": "AQ,BQ", "seed": "1"}
+        status, pv = self._req("POST", "/api/preview", body)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(pv["reports"]), 3)
+        self.assertGreater(pv["estimate"], 3)       # 22/dag × 5 dagar × årstid
+        with tempfile.TemporaryDirectory() as d:    # samma parametrar, skarp körning
+            c = generate.build_normal(out=d, lat=60.345, lon=17.422, radius=3.0,
+                                      area="airport", start=datetime(2026, 6, 15), days=5,
+                                      callsigns=["AQ", "BQ"], seed=1, reports=3)
+            for got, row in zip(pv["reports"], c.ground_truth):
+                self.assertEqual(got["file"], row["file"])
+                real = (Path(d) / row["file"]).read_text(encoding="utf-8")
+                self.assertEqual(got["text"], real)
+
+    def test_generate_job_and_overwrite_guard(self):
+        out = str(Path(self._tmp.name) / "nykorpus")
+        body = {"aoi": "60.3, 17.4", "area": "rural", "from": "2026-06-15",
+                "days": "3", "reports": "15", "seed": "7", "out": out}
+        status, j = self._req("POST", "/api/generate", body)
+        self.assertEqual(status, 200)
+        job = self._poll_job(j["job"])
+        self.assertEqual(job["status"], "done", job)
+        self.assertEqual(job["result"]["reports"], 15)
+        self.assertEqual(job["result"]["counts"], {"civil": 15})
+        status, st = self._req("GET", "/api/state")
+        self.assertEqual(st["active_corpus"], out)  # nya korpusen blev aktiv
+
+        status, err = self._req("POST", "/api/generate", body)
+        self.assertEqual(status, 409)               # utmappen är nu en korpus
+        self.assertIn("bekräfta för att fortsätta", err["error"])
+        status, j = self._req("POST", "/api/generate", dict(body, overwrite=True))
+        self.assertEqual(status, 200)
+        self.assertEqual(self._poll_job(j["job"])["status"], "done")
+
+        target_file = Path(self._tmp.name) / "enfil.txt"
+        target_file.write_text("x", encoding="utf-8")
+        status, err = self._req("POST", "/api/generate", dict(body, out=str(target_file)))
+        self.assertEqual(status, 400)               # utmapp som är en fil: 400, inte 500
+        self.assertIn("fil", err["error"])
+
+    def test_generate_validates_input(self):
+        ok = {"aoi": "60.3,17.4", "from": "2026-06-15", "out": "x"}
+        for broken in ({"aoi": "999,17"}, {"aoi": ""}, {"from": "15/6"},
+                       {"days": "0"}, {"area": "mars"}, {"out": ""}):
+            status, err = self._req("POST", "/api/generate", dict(ok, **broken))
+            self.assertEqual(status, 400, (broken, err))
+            self.assertTrue(err["error"], broken)
 
 
 if __name__ == "__main__":
