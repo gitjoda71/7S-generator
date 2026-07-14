@@ -25,18 +25,49 @@ def season_of(month):
     return "sommar"
 
 
-def build_locations(lat, lon, radius, area, callsigns, rng, per=4):
-    """`per` named locations per callsign, each in that callsign's bearing wedge."""
+def _sample_in_polygon(polygon, bounds, lat, lon, rng, wedge, tries=200):
+    """A random point inside `polygon`, preferring one whose bearing from the AOI
+    centre falls in `wedge` (lo, hi). Falls back to any in-polygon point if the
+    wedge doesn't overlap the polygon (so a lop-sided area never stalls)."""
+    from .coords import point_in_polygon
+    lo, hi = wedge
+    minlat, maxlat, minlon, maxlon = bounds
+    fallback = None
+    for _ in range(tries):
+        plat = rng.uniform(minlat, maxlat)
+        plon = rng.uniform(minlon, maxlon)
+        if not point_in_polygon(plat, plon, polygon):
+            continue
+        if fallback is None:
+            fallback = (plat, plon)
+        b = geo.bearing_deg(lat, lon, plat, plon)
+        if lo <= b < hi:
+            return plat, plon
+    if fallback is not None:
+        return fallback
+    return polygon[0][0], polygon[0][1]          # degenerate polygon: a vertex
+
+
+def build_locations(lat, lon, radius, area, callsigns, rng, per=4, polygon=None):
+    """`per` named locations per callsign, each in that callsign's bearing wedge.
+    With `polygon` set, points are scattered inside that drawn area instead of a
+    radius disk (still sector-assigned by bearing where the geometry allows)."""
+    from .coords import polygon_bounds
     places = AREAS[area]["places"][:]
     rng.shuffle(places)
     n = len(callsigns)
     width = 360 / n
+    bounds = polygon_bounds(polygon) if polygon else None
     locs, pi = [], 0
     for i, cs in enumerate(callsigns):
         for _ in range(per):
-            bearing = rng.uniform(i * width, (i + 1) * width)
-            dist = radius * (rng.random() ** 0.5)
-            plat, plon = geo.offset_point(lat, lon, bearing, dist)
+            if polygon:
+                plat, plon = _sample_in_polygon(
+                    polygon, bounds, lat, lon, rng, (i * width, (i + 1) * width))
+            else:
+                bearing = rng.uniform(i * width, (i + 1) * width)
+                dist = radius * (rng.random() ** 0.5)
+                plat, plon = geo.offset_point(lat, lon, bearing, dist)
             name = places[pi % len(places)]
             pi += 1
             locs.append({"callsign": cs, "sector": i, "name": name,
@@ -85,12 +116,13 @@ def _new_record(dt, loc, rng, platoon_uuid):
 
 # --- normal activity --------------------------------------------------------
 def build_normal(out, lat, lon, radius, area, start, days, callsigns, seed,
-                 reports=None, obj_name="objektet", images=False, obsidian=False):
+                 reports=None, obj_name="objektet", images=False, obsidian=False,
+                 polygon=None):
     rng = _random.Random(seed)
     prof = AREAS[area]
     season = season_of(start.month)
     smeta = SEASONS[season]
-    locs = build_locations(lat, lon, radius, area, callsigns, rng)
+    locs = build_locations(lat, lon, radius, area, callsigns, rng, polygon=polygon)
     platoon_uuid = {cs: _uid(rng) for cs in callsigns}
 
     if reports is None:
@@ -100,7 +132,7 @@ def build_normal(out, lat, lon, radius, area, start, days, callsigns, seed,
         "aoi": [lat, lon], "aoi_name": obj_name, "radius_km": radius, "area": area,
         "from": start.strftime("%Y-%m-%d"), "days": days, "callsigns": callsigns,
         "season": season, "seed": seed, "obsidian": obsidian,
-        "locations": locs, "platoon_uuid": platoon_uuid,
+        "polygon": polygon, "locations": locs, "platoon_uuid": platoon_uuid,
     })
     render_plate = None
     if images:

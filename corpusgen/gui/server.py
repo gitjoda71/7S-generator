@@ -6,7 +6,6 @@ mutations go via POST only; request bodies are size-capped before reading; no
 filesystem content is served — only the embedded app.html and JSON APIs.
 """
 import json
-import re
 import tempfile
 import threading
 import webbrowser
@@ -152,6 +151,37 @@ class GuiState:
             self.sink(f"skickade {sent} rapport(er) manuellt")
             return self.feed_status()
 
+    # --- map helpers -----------------------------------------------------------
+    def parse_coord(self, body):
+        """Parse a single coordinate string (any supported format) for the map/form."""
+        from ..coords import parse_point
+        try:
+            lat, lon, kind = parse_point(body.get("text", ""))
+        except ValueError as e:
+            raise ApiError(400, str(e))
+        return {"lat": lat, "lon": lon, "kind": kind}
+
+    def preview_locations(self, body):
+        """Where the named locations would land for this AOI/radius/area/polygon —
+        deterministic (same seed) and cheap (no reports written). Feeds the map."""
+        import random as _random
+        lat, lon = _parse_aoi(body.get("aoi", ""))
+        area = str(body.get("area") or "rural").strip().lower()
+        if area not in AREAS:
+            raise ApiError(400, f"okänd områdestyp: {area}")
+        radius = _number(body.get("radius"), "radie", 0.1, 100, default=3.0)
+        callsigns = [c.strip().upper() for c in
+                     str(body.get("callsigns") or "AQ,BQ,CQ,DQ").split(",") if c.strip()]
+        if not callsigns:
+            raise ApiError(400, "minst en anropssignal krävs")
+        polygon = _parse_polygon(body.get("polygon"))
+        seed = _number(body.get("seed"), "seed", -2**31, 2**31, cast=int, default=2026)
+        locs = generate.build_locations(lat, lon, radius, area, callsigns,
+                                        _random.Random(seed), polygon=polygon)
+        return {"aoi": [lat, lon], "radius": radius, "polygon": polygon,
+                "locations": [{"lat": l["lat"], "lon": l["lon"], "sector": l["sector"],
+                               "callsign": l["callsign"], "name": l["name"]} for l in locs]}
+
     # --- generate --------------------------------------------------------------
     def preview(self, body):
         """First PREVIEW_REPORTS reports of the exact corpus `generate` would
@@ -248,20 +278,33 @@ class GuiState:
 
 
 def _parse_aoi(text):
-    """Same tolerance as the CLI's --aoi: comma, space, or both between the
-    two numbers; range-checked with the decimal-point hint."""
-    parts = [p for p in re.split(r"[,\s]+", str(text).strip()) if p]
-    if len(parts) != 2:
-        raise ApiError(400, f"AOI: förväntade LAT,LON (två tal), fick {text!r}")
+    """AOI in any supported format (decimal / MGRS / DMS / SWEREF 99 TM),
+    via corpusgen.coords. Returns (lat, lon)."""
+    from ..coords import parse_point
     try:
-        lat, lon = float(parts[0]), float(parts[1])
-    except ValueError:
-        raise ApiError(400, f"AOI: LAT och LON måste vara tal, fick {text!r}")
-    if not -90 <= lat <= 90:
-        raise ApiError(400, f"LAT måste vara mellan -90 och 90, fick {lat} (glömt decimalpunkt?)")
-    if not -180 <= lon <= 180:
-        raise ApiError(400, f"LON måste vara mellan -180 och 180, fick {lon}")
+        lat, lon, _ = parse_point(text)
+    except ValueError as e:
+        raise ApiError(400, f"AOI: {e}")
     return lat, lon
+
+
+def _parse_polygon(raw):
+    """Validate a polygon from the request: a list of [lat, lon] pairs (>=3),
+    each range-checked. Returns None for an empty/absent polygon."""
+    if not raw:
+        return None
+    if not isinstance(raw, list) or len(raw) < 3:
+        raise ApiError(400, "polygon behöver minst 3 hörn")
+    poly = []
+    for pt in raw:
+        try:
+            lat, lon = float(pt[0]), float(pt[1])
+        except (TypeError, ValueError, IndexError):
+            raise ApiError(400, f"ogiltigt polygonhörn: {pt!r}")
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise ApiError(400, f"polygonhörn utanför giltigt intervall: {pt!r}")
+        poly.append([lat, lon])
+    return poly
 
 
 def _number(v, name, lo, hi, cast=float, default=None):
@@ -311,6 +354,7 @@ def _gen_params(body, for_preview=False):
     out = str(body.get("out", "")).strip().strip('"').strip("'")
     if not out and not for_preview:
         raise ApiError(400, "ange en utmapp")
+    polygon = _parse_polygon(body.get("polygon"))
     season = generate.season_of(start.month)
     estimate = reports if reports is not None else round(
         AREAS[area]["reports_per_day"] * days * SEASONS[season]["civ_mult"])
@@ -321,7 +365,7 @@ def _gen_params(body, for_preview=False):
         "area": area, "start": start, "days": days, "callsigns": callsigns,
         "seed": _number(body.get("seed"), "seed", -2**31, 2**31, cast=int, default=2026),
         "reports": reports, "obj_name": str(body.get("name") or "objektet").strip() or "objektet",
-        "images": images, "obsidian": bool(body.get("obsidian")),
+        "images": images, "obsidian": bool(body.get("obsidian")), "polygon": polygon,
         "_estimate": estimate, "_season": season,
     }
 
@@ -427,6 +471,8 @@ def make_handler(state):
             routes = {"/api/use": state.use,
                       "/api/generate": state.start_generate,
                       "/api/preview": state.preview,
+                      "/api/preview-locations": state.preview_locations,
+                      "/api/parse": state.parse_coord,
                       "/api/feed/start": state.feed_start,
                       "/api/feed/send": state.feed_send}
             try:

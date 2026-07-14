@@ -23,25 +23,35 @@ class _Fmt(argparse.ArgumentDefaultsHelpFormatter,
 
 
 class _AoiAction(argparse.Action):
-    """Parse --aoi as LAT,LON into a (lat, lon) tuple, tolerantly: a comma, a space,
-    or both may separate the two numbers, so `59.66,18.92`, `59.66, 18.92` (a space
-    after the comma splits it into two shell tokens), and `59.66 18.92` all work."""
+    """Parse --aoi into a (lat, lon) tuple. Accepts decimal degrees, MGRS, DMS/DM,
+    and SWEREF 99 TM (see corpusgen.coords). Tolerant of shell token-splitting: a
+    comma, a space, or both may separate the parts, so `59.66,18.92`,
+    `59.66, 18.92`, `59.66 18.92`, and `33V XF 66651 79308` all work."""
     def __call__(self, parser, namespace, values, option_string=None):
+        from .coords import parse_point
         text = " ".join(values)
-        parts = [p for p in re.split(r"[,\s]+", text.strip()) if p]
-        if len(parts) != 2:
-            raise argparse.ArgumentError(self, f"förväntade LAT,LON (två tal), fick {text!r}")
         try:
-            lat, lon = float(parts[0]), float(parts[1])
-        except ValueError:
-            raise argparse.ArgumentError(self, f"LAT och LON måste vara tal, fick {text!r}")
-        # Range-check: a latitude > 90 (a common typo, e.g. 599.6 for 59.96)
-        # silently produced arctic MGRS grids (band X) before this guard.
-        if not -90 <= lat <= 90:
-            raise argparse.ArgumentError(self, f"LAT måste vara mellan -90 och 90, fick {lat} (glömt decimalpunkt?)")
-        if not -180 <= lon <= 180:
-            raise argparse.ArgumentError(self, f"LON måste vara mellan -180 och 180, fick {lon}")
+            lat, lon, _ = parse_point(text)
+        except ValueError as e:
+            raise argparse.ArgumentError(self, str(e))
         setattr(namespace, self.dest, (lat, lon))
+
+
+def _polygon(s):
+    """Parse --polygon: a whitespace/semicolon-separated list of 'lat,lon' vertices
+    (>=3), e.g. '60.34,17.41; 60.36,17.45; 60.33,17.47'."""
+    from .coords import parse_point
+    chunks = [c for c in re.split(r"[;\n]+", s) if c.strip()]
+    if len(chunks) < 3:
+        raise argparse.ArgumentTypeError("en polygon behöver minst 3 hörn (lat,lon; lat,lon; …)")
+    poly = []
+    for c in chunks:
+        try:
+            lat, lon, _ = parse_point(c)
+        except ValueError as e:
+            raise argparse.ArgumentTypeError(str(e))
+        poly.append([lat, lon])
+    return poly
 
 
 def _callsigns(s):
@@ -66,9 +76,11 @@ def cmd_generate(a):
         out=a.out, lat=a.aoi[0], lon=a.aoi[1], radius=a.radius, area=a.area,
         start=getattr(a, "from"), days=days, callsigns=a.callsigns, seed=a.seed,
         reports=a.reports, obj_name=a.name, images=a.images, obsidian=a.obsidian,
+        polygon=a.polygon,
     )
+    where = f"i polygon ({len(a.polygon)} hörn)" if a.polygon else f"radie {a.radius} km"
     print(f"[{a.area}] skrev {len(c.ground_truth)} rapporter till {c.path} "
-          f"({days} dagar, årstid {c.meta['season']}, {len(c.meta['locations'])} platser)")
+          f"({days} dagar, årstid {c.meta['season']}, {len(c.meta['locations'])} platser, {where})")
     if a.images:
         n = sum(1 for r in c.ground_truth if r.get("plate"))
         print(f"renderade skyltfoton för {n} skyltrapport(er)")
@@ -139,11 +151,17 @@ def build_parser():
                "    --from 2026-06-15 --days 14 \\\n"
                "    --callsigns AQ,BQ,CQ,DQ --name \"Tierp flygfält\" \\\n"
                "    --out ./korpus_tierp")
-    g.add_argument("--aoi", nargs="+", action=_AoiAction, required=True, metavar="LAT,LON",
-                   help="områdets mittpunkt (AOI), decimalgrader, latitud först "
-                        "(t.ex. 60.345,17.422; mellanslag efter kommatecknet går bra)")
+    g.add_argument("--aoi", nargs="+", action=_AoiAction, required=True, metavar="KOORD",
+                   help="områdets mittpunkt (AOI). Decimalgrader (60.345,17.422), MGRS "
+                        "(33V XF 66651 79308), DMS (59°15'41\"N 17°42'49\"E) eller "
+                        "SWEREF 99 TM (6577564,674032) — latitud/nord först")
     g.add_argument("--radius", type=float, default=3.0, metavar="KM",
-                   help="spridningsradie för platser från AOI, km (>0, vanl. 1–20)")
+                   help="spridningsradie för platser från AOI, km (>0, vanl. 1–20). "
+                        "Ignoreras om --polygon anges.")
+    g.add_argument("--polygon", type=_polygon, metavar="'lat,lon; lat,lon; …'",
+                   help="rita ut genereringsområdet som en polygon (minst 3 hörn, "
+                        "semikolon-separerade). Platser sprids inuti polygonen i "
+                        "stället för i radie-cirkeln.")
     g.add_argument("--area", choices=sorted(AREAS), default="rural",
                    help="områdestyp (styr ordförråd och basfrekvens för rapporter)")
     g.add_argument("--from", type=_date, required=True, metavar="ÅÅÅÅ-MM-DD", help="startdatum")

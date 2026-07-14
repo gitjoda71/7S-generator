@@ -115,6 +115,47 @@ class TestGuiApi(unittest.TestCase):
         a = build_parser().parse_args(["gui", "--port", "7710", "--no-browser"])
         self.assertEqual((a.port, a.no_browser), (7710, True))
 
+    def test_parse_endpoint(self):
+        status, r = self._req("POST", "/api/parse", {"text": "33V XF 66651 79308"})
+        self.assertEqual(status, 200)
+        self.assertEqual(r["kind"], "mgrs")
+        self.assertTrue(59.2 < r["lat"] < 59.4)
+        self.assertEqual(self._req("POST", "/api/parse", {"text": "strunt"})[0], 400)
+
+    def test_preview_locations_radius_and_polygon(self):
+        base = {"aoi": "60.345, 17.422", "area": "airport", "callsigns": "AQ,BQ", "seed": "1"}
+        status, r = self._req("POST", "/api/preview-locations", dict(base, radius="3"))
+        self.assertEqual(status, 200)
+        self.assertEqual(len(r["locations"]), 8)             # 2 callsigns × 4
+        self.assertIsNone(r["polygon"])
+        for loc in r["locations"]:
+            self.assertIn(loc["sector"], (0, 1))
+
+        poly = [[60.30, 17.37], [60.30, 17.47], [60.40, 17.47], [60.40, 17.37]]
+        status, r = self._req("POST", "/api/preview-locations", dict(base, polygon=poly))
+        self.assertEqual(status, 200)
+        self.assertEqual(r["polygon"], poly)
+        from corpusgen.coords import point_in_polygon
+        for loc in r["locations"]:
+            self.assertTrue(point_in_polygon(loc["lat"], loc["lon"], poly))
+
+    def test_generate_with_polygon(self):
+        poly = [[60.30, 17.37], [60.30, 17.47], [60.40, 17.47], [60.40, 17.37]]
+        out = str(Path(self._tmp.name) / "polykorpus")
+        body = {"aoi": "60.345,17.422", "area": "airport", "from": "2026-06-15",
+                "days": "5", "reports": "30", "seed": "3", "out": out, "polygon": poly}
+        status, j = self._req("POST", "/api/generate", body)
+        self.assertEqual(status, 200)
+        job = self._poll_job(j["job"])
+        self.assertEqual(job["status"], "done", job)
+        meta = json.loads((Path(out) / "meta.json").read_text(encoding="utf-8"))
+        self.assertEqual(meta["polygon"], poly)
+
+    def test_generate_rejects_bad_polygon(self):
+        body = {"aoi": "60.3,17.4", "from": "2026-06-15", "out": "x",
+                "polygon": [[60.3, 17.4], [60.4, 17.5]]}   # only 2 vertices
+        self.assertEqual(self._req("POST", "/api/generate", body)[0], 400)
+
     def test_capabilities(self):
         status, cap = self._req("GET", "/api/capabilities")
         self.assertEqual(status, 200)

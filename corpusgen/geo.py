@@ -42,3 +42,11 @@ def dist_km(lat1, lon1, lat2, lon2):
     dn = (lat2 - lat1) * _KM_PER_DEG_LAT
     de = (lon2 - lon1) * 111.320 * math.cos(math.radians(lat1))
     return math.hypot(dn, de)
+
+
+def bearing_deg(lat1, lon1, lat2, lon2):
+    """Bearing from point 1 to point 2, degrees clockwise from north (local
+    flat-earth approximation, matching offset_point/random_point)."""
+    dn = (lat2 - lat1) * _KM_PER_DEG_LAT
+    de = (lon2 - lon1) * 111.320 * math.cos(math.radians(lat1))
+    return math.degrees(math.atan2(de, dn)) % 360

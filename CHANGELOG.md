@@ -3,6 +3,17 @@
 Forkad 2026-07-13 från larsnor/7S-generator v0.2.1
 (origin = gitjoda71/7S-generator, upstream = larsnor/7S-generator).
 
+## 0.7.0 — 2026-07-14
+
+- Koordinatinmatning i flera format (ny `corpusgen/coords.py`, endast stdlib):
+  MGRS (invers UTM, round-trippar < 1 m mot framåt-konverteringen), DMS/DM
+  (`59°15'41"N 17°42'49"E`, svenskt Ö/O = öst), SWEREF 99 TM, och decimalgrader.
+  `--aoi` och GUI:ts AOI-fält tar nu alla dessa; nytt `/api/parse`-endpoint.
+- **Polygon-område**: `generate --polygon 'lat,lon; …'` (och `build_normal(polygon=)`)
+  sprider platser inuti en ritad polygon i stället för radie-cirkeln, fortfarande
+  sektorindelat per bäring där geometrin tillåter. Polygonen sparas i meta.json.
+  Nytt `/api/preview-locations`-endpoint visar var platserna hamnar (för kartan).
+
 ## 0.6.0 — 2026-07-14
 
 - GUI förstagångsupplevelse: en tom Korpus-flik var en återvändsgränd (fält

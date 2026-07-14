@@ -73,6 +73,36 @@ class TestAugment(unittest.TestCase):
             self.assertEqual(len({r["member"] for r in prot}), 1)        # one group
 
 
+class TestPolygonGeneration(unittest.TestCase):
+    def test_places_land_inside_polygon(self):
+        from corpusgen.coords import point_in_polygon
+        # a square around the AOI (~±0.05° ≈ 5 km)
+        poly = [[60.30, 17.37], [60.30, 17.47], [60.40, 17.47], [60.40, 17.37]]
+        with tempfile.TemporaryDirectory() as d:
+            c = generate.build_normal(out=d, lat=60.345, lon=17.422, radius=3.0,
+                                      area="airport", start=datetime(2026, 6, 15),
+                                      days=7, callsigns=CS, seed=1, reports=60,
+                                      polygon=poly)
+            self.assertEqual(c.meta["polygon"], poly)
+            for loc in c.meta["locations"]:
+                self.assertTrue(point_in_polygon(loc["lat"], loc["lon"], poly),
+                                f"{loc['name']} @ {loc['lat']},{loc['lon']} utanför polygonen")
+
+    def test_polygon_is_deterministic(self):
+        poly = [[60.30, 17.37], [60.30, 17.47], [60.40, 17.47], [60.40, 17.37]]
+        with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
+            a = generate.build_normal(out=d1, lat=60.345, lon=17.422, radius=3, area="airport",
+                                      start=datetime(2026, 6, 15), days=7, callsigns=CS,
+                                      seed=1, reports=40, polygon=poly)
+            b = generate.build_normal(out=d2, lat=60.345, lon=17.422, radius=3, area="airport",
+                                      start=datetime(2026, 6, 15), days=7, callsigns=CS,
+                                      seed=1, reports=40, polygon=poly)
+            self.assertEqual([r["id"] for r in a.ground_truth],
+                             [r["id"] for r in b.ground_truth])
+            self.assertEqual([l["lat"] for l in a.meta["locations"]],
+                             [l["lat"] for l in b.meta["locations"]])
+
+
 class TestCliAoi(unittest.TestCase):
     def _parse(self, *aoi_tokens):
         from corpusgen.cli import build_parser
@@ -85,6 +115,10 @@ class TestCliAoi(unittest.TestCase):
         self.assertEqual(self._parse("59.664,", "18.925"), (59.664, 18.925))  # space after comma
         self.assertEqual(self._parse("59.664", "18.925"), (59.664, 18.925))   # space separator
         self.assertEqual(self._parse("59.664, 18.925"), (59.664, 18.925))     # quoted, spaced
+
+    def test_aoi_accepts_mgrs(self):
+        lat, lon = self._parse("33V", "XF", "66651", "79308")   # MGRS, shell-split
+        self.assertTrue(59.2 < lat < 59.4 and 17.8 < lon < 18.0, (lat, lon))
 
     def test_aoi_rejects_bad_input(self):
         with self.assertRaises(SystemExit):      # argparse exits on a bad value
