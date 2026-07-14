@@ -3,6 +3,17 @@
 Forkad 2026-07-13 från larsnor/7S-generator v0.2.1
 (origin = gitjoda71/7S-generator, upstream = larsnor/7S-generator).
 
+## 0.6.0 — 2026-07-14
+
+- GUI förstagångsupplevelse: en tom Korpus-flik var en återvändsgränd (fält
+  utan att veta vart man skulle peka). Nu:
+  - Utan historik landar appen på **Generera**-fliken — där man skapar sin
+    första korpus — i stället för på en tom Korpus-flik.
+  - **Senaste korpusar**: aktiverade/genererade mappar kommer ihåg (localStorage)
+    och visas som klickbara chips på Korpus-fliken; ett klick öppnar korpusen,
+    ✕ tar bort den ur listan. Döda länkar (raderad mapp) rensas automatiskt.
+  - Tydligare tom-läge-text beroende på om historik finns.
+
 ## 0.5.0 — 2026-07-14
 
 - GUI: Generera-fliken. Formulär med samma förlåtande AOI-parsning som CLI:t,

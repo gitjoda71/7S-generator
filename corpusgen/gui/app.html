@@ -72,6 +72,12 @@
   .empty { color: var(--muted); padding: 1.2rem 0; }
   .empty b { color: var(--text); }
 
+  .recent-list { display: flex; flex-wrap: wrap; gap: .4rem; margin: .1rem 0 1rem; }
+  button.recent { display: inline-flex; align-items: center; gap: .4rem; max-width: 100%;
+    padding: .35rem .7rem; font-size: .85rem; border-radius: 99px; }
+  button.recent .x { color: var(--muted); font-size: .95em; line-height: 1; }
+  button.recent .x:hover { color: var(--danger); }
+
   progress { width: 100%; height: 12px; accent-color: var(--accent); }
   .progress-line { display: flex; justify-content: space-between; font-size: .85rem;
     color: var(--muted); margin: .25rem 0 .8rem; }
@@ -165,6 +171,7 @@
   <!-- ============ KORPUS ============ -->
   <section role="tabpanel" id="panel-korpus">
     <div id="korpus-active"></div>
+    <div id="korpus-recent"></div>
     <div class="row">
       <div>
         <label for="korpus-path">Korpusmapp (innehåller meta.json)</label>
@@ -270,8 +277,12 @@ function badge(k, v) {
 function renderState(st) {
   const el = $("korpus-active");
   if (!st.active_corpus) {
-    el.innerHTML = `<p class="empty"><b>Ingen aktiv korpus.</b> Klistra in sökvägen till en
-      korpusmapp nedan — eller skapa en ny under fliken Generera.</p>`;
+    el.innerHTML = getRecent().length
+      ? `<p class="empty"><b>Ingen aktiv korpus.</b> Välj en tidigare korpus nedan,
+         klistra in en sökväg, eller skapa en ny under fliken Generera.</p>`
+      : `<p class="empty"><b>Ingen aktiv korpus.</b> Du har ingen korpus än —
+         skapa din första under fliken <b>Generera</b> (eller klistra in sökvägen
+         till en befintlig korpusmapp nedan).</p>`;
   } else {
     const counts = st.counts ? Object.entries(st.counts).sort()
       .map(([k, v]) => badge(esc(k), esc(v))).join(" ") : "";
@@ -294,14 +305,57 @@ function renderState(st) {
 async function refreshState() {
   try { renderState(await api("/api/state")); } catch (e) { /* servern borta */ }
 }
+
+/* senaste korpusar — kom ihåg mappar som aktiverats (server-kanoniserad sökväg) */
+function getRecent() {
+  try { const a = JSON.parse(localStorage.getItem("7s.recent") || "[]");
+        return Array.isArray(a) ? a : []; } catch (e) { return []; }
+}
+function rememberCorpus(path) {
+  const p = String(path || "").trim();
+  if (!p) return;
+  const list = [p, ...getRecent().filter(x => x !== p)].slice(0, 8);
+  localStorage.setItem("7s.recent", JSON.stringify(list));
+  renderRecent();
+}
+function forgetCorpus(path) {
+  localStorage.setItem("7s.recent", JSON.stringify(getRecent().filter(x => x !== path)));
+  renderRecent();
+}
+function shortPath(p) {
+  const clean = p.replace(/[\\/]+$/, "");
+  const parts = clean.split(/[\\/]/);
+  if (parts.length <= 2) return clean;
+  const sep = clean.includes("\\") ? "\\" : "/";
+  return "…" + sep + parts.slice(-2).join(sep);
+}
+function renderRecent() {
+  const el = $("korpus-recent"), list = getRecent();
+  if (!list.length) { el.innerHTML = ""; return; }
+  el.innerHTML = `<label>Senaste korpusar</label><div class="recent-list">` +
+    list.map(p => `<button class="recent" data-path="${esc(p)}" title="${esc(p)}">` +
+      `<span class="txt">${esc(shortPath(p))}</span> <span class="x" title="Ta bort ur listan">✕</span></button>`).join("") +
+    `</div>`;
+  el.querySelectorAll("button.recent").forEach(b => b.addEventListener("click", e => {
+    if (e.target.classList.contains("x")) { forgetCorpus(b.dataset.path); return; }
+    $("korpus-path").value = b.dataset.path;
+    $("korpus-use").click();
+  }));
+}
+
 $("korpus-use").addEventListener("click", () => busy($("korpus-use"), async () => {
   setStatus($("korpus-status"), "");
+  const typed = $("korpus-path").value.trim();
   try {
-    const st = await api("/api/use", { path: $("korpus-path").value });
+    const st = await api("/api/use", { path: typed });
     renderState(st);
-    localStorage.setItem("7s.korpus", $("korpus-path").value.trim());
+    localStorage.setItem("7s.korpus", typed);
+    rememberCorpus(st.active_corpus || typed);
     setStatus($("korpus-status"), "aktiv korpus satt ✓", "ok");
-  } catch (e) { setStatus($("korpus-status"), e.message, "err"); }
+  } catch (e) {
+    if (/hittades inte|saknar meta\.json/.test(e.message)) forgetCorpus(typed);  // röj döda länkar
+    setStatus($("korpus-status"), e.message, "err");
+  }
 }));
 $("korpus-path").addEventListener("keydown", e => { if (e.key === "Enter") $("korpus-use").click(); });
 
@@ -481,6 +535,7 @@ $("g-run").addEventListener("click", () => busy($("g-run"), async () => {
       setStatus($("g-status"),
         `klart ✓ ${res.reports} rapporter till ${res.path} (årstid ${res.season}` +
         (res.plates ? `, ${res.plates} skyltfoton` : "") + `) — nu aktiv korpus`, "ok");
+      rememberCorpus(res.path);
       refreshState();
       return;
     }
@@ -512,7 +567,10 @@ schedulePreview();
 $("korpus-path").value = localStorage.getItem("7s.korpus") || "";
 $("feed-dest").value = localStorage.getItem("7s.dest") || "";
 $("feed-min").value = localStorage.getItem("7s.min") || "15";
-showTab(localStorage.getItem("7s.tab") || "korpus");
+renderRecent();
+// Förstagångsanvändare (ingen historik) landar på Generera — där man skapar sin
+// första korpus; annars respekteras senast använda flik, med Korpus som fallback.
+showTab(localStorage.getItem("7s.tab") || (getRecent().length ? "korpus" : "gen"));
 refreshState();
 pollFeed();
 setInterval(pollFeed, 1000);
